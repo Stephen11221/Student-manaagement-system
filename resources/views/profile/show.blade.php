@@ -70,5 +70,12 @@
             <a href="{{ route('profile.edit') }}" class="edit-btn"><i class="fa-regular fa-pen-to-square"></i> Edit Profile</a>
         </div>
     </div>
+
+    @include('partials.idle-timeout-modal')
+    <script src="{{ asset('js/idle-timeout.js') }}"></script>
+    <script>
+        document.documentElement.dataset.idleTimeout = "{{ config('idle.idle_timeout', 15) }}";
+        document.documentElement.dataset.warningTime = "{{ config('idle.warning_time', 1) }}";
+    </script>
 </body>
 </html>

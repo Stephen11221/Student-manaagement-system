@@ -191,5 +191,12 @@
         document.getElementById('search').addEventListener('keyup', filterTable);
         document.getElementById('roleFilter').addEventListener('change', filterTable);
     </script>
+
+    @include('partials.idle-timeout-modal')
+    <script src="{{ asset('js/idle-timeout.js') }}"></script>
+    <script>
+        document.documentElement.dataset.idleTimeout = "{{ config('idle.idle_timeout', 15) }}";
+        document.documentElement.dataset.warningTime = "{{ config('idle.warning_time', 1) }}";
+    </script>
 </body>
 </html>
