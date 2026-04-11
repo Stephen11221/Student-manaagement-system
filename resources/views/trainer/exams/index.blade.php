@@ -84,6 +84,7 @@
                                 <a href="{{ route('trainer.exams.edit', $exam->id) }}" class="mini-btn secondary"><i class="fa-solid fa-pen"></i> Edit</a>
                                 <form method="POST" action="{{ route('trainer.exams.delete', $exam->id) }}" style="margin:0;">
                                     @csrf
+                                    @method('DELETE')
                                     <button type="submit" class="mini-btn danger" onclick="return confirm('Delete this exam?')"><i class="fa-solid fa-trash"></i> Delete</button>
                                 </form>
                             </div>

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdminController;
 use App\Models\Attendance;
 use App\Models\ClassRoom;
 use App\Models\Exam;
@@ -1362,6 +1363,69 @@ Route::middleware('auth')->group(function () {
 
             return redirect()->route('admin.homework.index')->with('status', 'Homework deleted successfully.');
         })->name('admin.homework.delete');
+
+        // ============ NEW ADMIN FEATURES ============
+
+        // Dashboard & Analytics
+        Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('admin.dashboard');
+        Route::get('/analytics', [AdminController::class, 'getAnalytics'])->name('admin.analytics');
+        Route::get('/access-control', [AdminController::class, 'getAccessControl'])->name('admin.access-control');
+
+        // Departments
+        Route::get('/departments', [AdminController::class, 'getDepartments'])->name('admin.departments.index');
+        Route::get('/departments/create', [AdminController::class, 'createDepartment'])->name('admin.departments.create');
+        Route::post('/departments', [AdminController::class, 'storeDepartment'])->name('admin.departments.store');
+        Route::get('/departments/{department}/edit', [AdminController::class, 'editDepartment'])->name('admin.departments.edit');
+        Route::put('/departments/{department}', [AdminController::class, 'updateDepartment'])->name('admin.departments.update');
+        Route::delete('/departments/{department}', [AdminController::class, 'deleteDepartment'])->name('admin.departments.delete');
+
+        // System Settings
+        Route::get('/settings', [AdminController::class, 'getSettings'])->name('admin.settings.index');
+        Route::post('/settings', [AdminController::class, 'updateSettings'])->name('admin.settings.update');
+
+        // Audit Logs
+        Route::get('/audit-logs', [AdminController::class, 'getAuditLogs'])->name('admin.audit-logs.index');
+        Route::get('/audit-logs/{audit_log}', [AdminController::class, 'viewAuditLog'])->name('admin.audit-logs.show');
+
+        // Permissions & Roles
+        Route::get('/permissions', [AdminController::class, 'getPermissions'])->name('admin.permissions.index');
+        Route::get('/permissions/create', [AdminController::class, 'createPermission'])->name('admin.permissions.create');
+        Route::post('/permissions', [AdminController::class, 'storePermission'])->name('admin.permissions.store');
+        Route::get('/permissions/{permission}/edit', [AdminController::class, 'editPermission'])->name('admin.permissions.edit');
+        Route::put('/permissions/{permission}', [AdminController::class, 'updatePermission'])->name('admin.permissions.update');
+        Route::delete('/permissions/{permission}', [AdminController::class, 'deletePermission'])->name('admin.permissions.delete');
+
+        Route::get('/roles', [AdminController::class, 'getRoles'])->name('admin.roles.index');
+        Route::get('/roles/{role}/edit', [AdminController::class, 'editRole'])->name('admin.roles.edit');
+        Route::put('/roles/{role}/permissions', [AdminController::class, 'updateRolePermissions'])->name('admin.roles.permissions.update');
+
+        // User Status Control
+        Route::post('/users/{user}/suspend', [AdminController::class, 'suspendUser'])->name('admin.users.suspend.new');
+        Route::post('/users/{user}/unsuspend', [AdminController::class, 'unsuspendUser'])->name('admin.users.unsuspend');
+        Route::post('/users/{user}/lock', [AdminController::class, 'lockUser'])->name('admin.users.lock');
+        Route::post('/users/{user}/unlock', [AdminController::class, 'unlockUser'])->name('admin.users.unlock');
+        Route::post('/users/{user}/deactivate', [AdminController::class, 'deactivateUser'])->name('admin.users.deactivate');
+        Route::post('/users/{user}/activate', [AdminController::class, 'activateUser'])->name('admin.users.activate.new');
+
+        // Class Management (Enhanced)
+        Route::get('/classes/create', [AdminController::class, 'createClass'])->name('admin.classes.create');
+        Route::post('/classes', [AdminController::class, 'storeClass'])->name('admin.classes.store');
+        Route::get('/classes/{class}/edit', [AdminController::class, 'editClass'])->name('admin.classes.edit');
+        Route::put('/classes/{class}', [AdminController::class, 'updateClass'])->name('admin.classes.update');
+        Route::delete('/classes/{class}', [AdminController::class, 'deleteClass'])->name('admin.classes.delete');
+
+        // Homework Management (Enhanced)
+        Route::get('/homework-admin', [AdminController::class, 'getHomework'])->name('admin.homework-admin.index');
+        Route::get('/homework-admin/create', [AdminController::class, 'createHomework'])->name('admin.homework-admin.create');
+        Route::post('/homework-admin', [AdminController::class, 'storeHomework'])->name('admin.homework-admin.store');
+        Route::get('/homework-admin/{homework}/edit', [AdminController::class, 'editHomework'])->name('admin.homework-admin.edit');
+        Route::put('/homework-admin/{homework}', [AdminController::class, 'updateHomework'])->name('admin.homework-admin.update');
+        Route::delete('/homework-admin/{homework}', [AdminController::class, 'deleteHomework'])->name('admin.homework-admin.delete');
+
+        // Messaging System
+        Route::get('/messaging', [AdminController::class, 'getMessaging'])->name('admin.messaging.index');
+        Route::get('/messaging/send', [AdminController::class, 'sendMessageForm'])->name('admin.messaging.send-form');
+        Route::post('/messaging/send', [AdminController::class, 'sendMessage'])->name('admin.messaging.send');
     });
 
     Route::post('/logout', function (Request $request) {
