@@ -188,6 +188,7 @@
 
                         <div class="meta">
                             <div><i class="fa-solid fa-location-dot"></i> {{ $cls->room_number ?? 'Room not assigned' }}</div>
+                            <div><i class="fa-solid fa-circle-info"></i> {{ ucfirst($cls->delivery_mode ?? 'physical') }} class</div>
                             <div><i class="fa-solid fa-users"></i> {{ $cls->students_count ?? $cls->students->count() }} students</div>
                             <div><i class="fa-solid fa-circle-check"></i> {{ ucfirst($cls->status ?? 'active') }}</div>
                         </div>

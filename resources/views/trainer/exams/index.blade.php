@@ -76,12 +76,13 @@
                         <article class="card">
                             <h3 style="margin:0 0 8px;color:#f8fafc;">{{ $exam->title }}</h3>
                             <div class="muted">Exam Date: {{ $exam->exam_date ? $exam->exam_date->format('M d, Y') : 'Not set' }}</div>
+                            <div class="muted">Mode: {{ ucfirst($exam->exam_mode ?? 'online') }}</div>
                             <div class="muted">Type: {{ ucfirst($exam->submission_type === 'upload' ? 'file upload' : $exam->submission_type) }}</div>
                             <div class="muted">Status: {{ ucfirst($exam->status) }}</div>
+                            <div class="muted">Questions: {{ $exam->questions_count ?? 0 }}</div>
                             <div class="muted">Submissions: {{ $exam->submissions_count }}</div>
                             <div class="exam-actions">
                                 <a href="{{ route('trainer.exams.submissions', $exam->id) }}" class="mini-btn primary"><i class="fa-solid fa-eye"></i> Submitted Exams</a>
-                                <a href="{{ route('trainer.exams.edit', $exam->id) }}" class="mini-btn secondary"><i class="fa-solid fa-pen"></i> Edit</a>
                                 <form method="POST" action="{{ route('trainer.exams.delete', $exam->id) }}" style="margin:0;">
                                     @csrf
                                     @method('DELETE')

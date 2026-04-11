@@ -94,10 +94,11 @@
                             <div class="class-meta">
                                 <span><i class="fa-solid fa-chalkboard-user"></i> Trainer: <strong>{{ $class->trainer?->name ?? 'Not assigned' }}</strong></span>
                                 <span><i class="fa-solid fa-location-dot"></i> {{ $class->room_number ? 'Room '.$class->room_number : 'Room not set' }}</span>
+                                <span><i class="fa-solid fa-circle-info"></i> {{ ucfirst($class->delivery_mode ?? 'physical') }} class</span>
                             </div>
                             <p style="font-size: 0.85rem; margin-top: 8px; color: #16a34a;"><i class="fa-solid fa-circle-check"></i> {{ ucfirst($class->status) }}</p>
                         </div>
-                        <a href="{{ route('student.classes.show', $class->id) }}" class="action-btn"><i class="fa-solid fa-eye"></i> View Class</a>
+                        <a href="{{ studentClassJoinUrl($class) }}" class="action-btn"><i class="fa-solid fa-arrow-right"></i> {{ studentClassJoinLabel($class) }}</a>
                     </div>
                 @endforeach
             @else
@@ -109,7 +110,13 @@
             @endif
 
             <div class="section-title"><i class="fa-solid fa-plus"></i> Available Classes</div>
-            @if($availableClasses->count() > 0)
+            @if($classes->count() > 0)
+                <div class="empty-state">
+                    <div class="empty-state-icon"><i class="fa-solid fa-lock"></i></div>
+                    <h3>Your class is locked</h3>
+                    <p>You are currently enrolled in {{ $classes->first()->name }}. Other classes are hidden until you unenroll from this one.</p>
+                </div>
+            @elseif($availableClasses->count() > 0)
                 @foreach($availableClasses as $class)
                     <div class="list-item">
                         <div>

@@ -18,6 +18,9 @@
     </style>
 </head>
 <body>
+    @php
+        $existingAnswers = old('answers', $submission?->answers_json ?? []);
+    @endphp
     <div class="container">
         <header>
             <h1 style="margin:0;color:#f8fafc;"><i class="fa-solid fa-file-signature"></i> {{ $exam->title }}</h1>
@@ -32,7 +35,8 @@
                 <div style="margin:8px 0 10px;">{{ $exam->description }}</div>
                 <div class="meta">
                     <span><i class="fa-regular fa-calendar"></i> {{ $exam->exam_date ? $exam->exam_date->format('M d, Y') : 'No exam date' }}</span>
-                    <span><i class="fa-solid fa-list-check"></i> {{ ucfirst($exam->submission_type === 'upload' ? 'file' : $exam->submission_type) }}</span>
+                    <span><i class="fa-solid fa-list-check"></i> {{ $exam->isOnline() ? 'Online exam' : ucfirst($exam->submission_type === 'upload' ? 'file' : $exam->submission_type) }}</span>
+                    <span><i class="fa-solid fa-circle-info"></i> {{ ucfirst($exam->exam_mode ?? 'online') }} exam</span>
                     <span><i class="fa-solid fa-chalkboard-user"></i> {{ $exam->class?->trainer?->name ?? 'Trainer' }}</span>
                 </div>
             </div>
@@ -63,7 +67,28 @@
                         </ul>
                     </div>
                 @endif
-                @if($exam->submission_type === 'written')
+
+                @if($exam->isOnline())
+                    <div class="summary">
+                        <strong><i class="fa-solid fa-circle-info"></i> Answer all questions below</strong>
+                        <div style="margin-top:8px;color:#cbd5e1;">This online exam contains {{ $exam->questions->count() }} question{{ $exam->questions->count() === 1 ? '' : 's' }}.</div>
+                    </div>
+
+                    @forelse($exam->questions as $question)
+                        <div style="margin-bottom:18px;">
+                            <label style="display:block;margin-bottom:8px;color:#dbeafe;font-weight:700;">Question {{ $loop->iteration }}</label>
+                            <div class="info" style="margin-bottom:10px;">
+                                <div style="margin:0;color:#f8fafc;">{{ $question->question_text }}</div>
+                            </div>
+                            <textarea class="textarea" name="answers[{{ $question->id }}]" required>{{ $existingAnswers[$question->id] ?? '' }}</textarea>
+                        </div>
+                    @empty
+                        <div class="error-message">
+                            <strong><i class="fa-solid fa-triangle-exclamation"></i> No questions have been added yet.</strong>
+                            <div style="margin-top:8px;">Please check back once your trainer publishes the online questions.</div>
+                        </div>
+                    @endforelse
+                @elseif($exam->submission_type === 'written')
                     <label style="display:block;margin-bottom:8px;color:#dbeafe;font-weight:700;">Type your exam answer</label>
                     <textarea class="textarea" name="content" required>{{ old('content', $submission?->content) }}</textarea>
                 @else

@@ -19,6 +19,7 @@
             <div>
                 <h1 style="margin:0;color:#f8fafc;"><i class="fa-solid fa-graduation-cap"></i> {{ $exam->title }}</h1>
                 <p class="muted">Grade exam submissions.</p>
+                <p class="muted" style="margin-top:8px;"><i class="fa-solid fa-circle-info"></i> {{ ucfirst($exam->exam_mode ?? 'online') }} exam</p>
             </div>
             <a href="{{ route('trainer.exams.index', $exam->class_id) }}" class="btn secondary"><i class="fa-solid fa-arrow-left"></i> Back to Exams</a>
         </div>
@@ -33,7 +34,16 @@
                             <div style="font-weight:700;color:#f8fafc;">{{ $sub->student->name }}</div>
                             <div class="muted">{{ $sub->student->email }}</div>
                             <div class="muted" style="margin-top:8px;">Submitted: {{ $sub->submitted_at ? $sub->submitted_at->format('M d, Y H:i') : 'Pending' }}</div>
-                            @if($sub->content)
+                            @if($exam->isOnline() && $sub->answers_json)
+                                <div style="margin-top:12px;display:grid;gap:10px;">
+                                    @foreach($exam->questions as $question)
+                                        <div style="padding:12px;border-radius:10px;background:rgba(2,6,23,.45);">
+                                            <div style="font-weight:700;color:#f8fafc;margin-bottom:6px;">Q{{ $loop->iteration }}. {{ $question->question_text }}</div>
+                                            <div style="color:#cbd5e1;white-space:pre-wrap;">{{ $sub->answers_json[$question->id] ?? 'No answer submitted' }}</div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @elseif($sub->content)
                                 <div style="margin-top:12px;padding:12px;border-radius:10px;background:rgba(2,6,23,.45);white-space:pre-wrap;">{{ $sub->content }}</div>
                             @endif
                             @if($sub->file_path)

@@ -23,6 +23,7 @@
             <div>
                 <h1 style="margin:0;color:#f8fafc;"><i class="fa-solid fa-school"></i> {{ $class->name }}</h1>
                 <p class="muted" style="margin-top:8px;">{{ $class->description ?: 'No class description yet.' }}</p>
+                <p class="muted" style="margin-top:8px;"><i class="fa-solid fa-circle-info"></i> {{ ucfirst($class->delivery_mode ?? 'physical') }} class{{ $class->delivery_mode === 'online' ? ' with live join links' : '' }}</p>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <a href="{{ route('trainer.classes.index') }}" class="btn btn-secondary"><i class="fa-solid fa-arrow-left"></i> Back to Classes</a>

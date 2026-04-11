@@ -46,6 +46,10 @@
                             <div class="meta-row">
                                 <span class="pill pill-class"><i class="fa-solid fa-school"></i> {{ $exam->class?->name ?? 'Class unavailable' }}</span>
                                 <span class="pill pill-date"><i class="fa-regular fa-calendar"></i> {{ $exam->exam_date ? 'Exam '.$exam->exam_date->format('M d, Y') : 'No exam date' }}</span>
+                                <span class="pill pill-class"><i class="fa-solid fa-circle-info"></i> {{ ucfirst($exam->exam_mode ?? 'online') }} exam</span>
+                                @if(($exam->questions_count ?? 0) > 0)
+                                    <span class="pill pill-class"><i class="fa-solid fa-list"></i> {{ $exam->questions_count }} question{{ $exam->questions_count === 1 ? '' : 's' }}</span>
+                                @endif
                                 @if($isGraded)
                                     <span class="pill pill-graded"><i class="fa-solid fa-star"></i> Graded{{ $submission->marks !== null ? ': '.$submission->marks.'%' : '' }}</span>
                                 @elseif($isSubmitted)
@@ -56,7 +60,7 @@
                             </div>
                         </div>
                         <div class="action-group">
-                            <a href="{{ route('student.exams.submit', $exam->id) }}" class="btn"><i class="fa-solid fa-file-signature"></i> {{ $isSubmitted ? 'Review Exam' : 'Take Exam' }}</a>
+                            <a href="{{ route('student.exams.submit', $exam->id) }}" class="btn"><i class="fa-solid fa-file-signature"></i> {{ $isSubmitted ? 'Review Exam' : ($exam->isOnline() ? 'Take Online Exam' : 'Take Exam') }}</a>
                             <div class="action-note">{{ ucfirst($exam->submission_type === 'upload' ? 'file upload' : $exam->submission_type) }} with {{ $exam->class?->trainer?->name ?? 'trainer' }}</div>
                         </div>
                     </div>

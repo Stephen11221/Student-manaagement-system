@@ -55,7 +55,8 @@
         }
 
         input,
-        textarea {
+        textarea,
+        select {
             width: 100%;
             box-sizing: border-box;
             margin-bottom: 18px;
@@ -133,6 +134,12 @@
 
                 <label for="name">Class Name</label>
                 <input id="name" type="text" name="name" value="{{ old('name') }}" required>
+
+                <label for="delivery_mode">Class Mode</label>
+                <select id="delivery_mode" name="delivery_mode" required>
+                    <option value="online" @selected(old('delivery_mode') === 'online')>Online</option>
+                    <option value="physical" @selected(old('delivery_mode', 'physical') === 'physical')>Physical</option>
+                </select>
 
                 <label for="room_number">Room Number</label>
                 <input id="room_number" type="text" name="room_number" value="{{ old('room_number') }}">

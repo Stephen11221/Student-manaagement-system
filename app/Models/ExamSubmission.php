@@ -10,6 +10,7 @@ class ExamSubmission extends Model
         'exam_id',
         'student_id',
         'content',
+        'answers_json',
         'file_path',
         'marks',
         'feedback',
@@ -19,6 +20,7 @@ class ExamSubmission extends Model
 
     protected $casts = [
         'submitted_at' => 'datetime',
+        'answers_json' => 'array',
     ];
 
     public function exam()

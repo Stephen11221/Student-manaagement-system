@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminController;
 use App\Models\Attendance;
 use App\Models\ClassRoom;
 use App\Models\Exam;
+use App\Models\ExamQuestion;
 use App\Models\ExamSubmission;
 use App\Models\Homework;
 use App\Models\HomeworkSubmission;
@@ -52,6 +53,66 @@ function syncStudentEnrollment(User $user): void
     }
 
     $user->enrolledClasses()->detach();
+}
+
+function studentCurrentClass(User $user): ?ClassRoom
+{
+    return $user->currentClass()->with('trainer')->first();
+}
+
+function studentClassJoinUrl(ClassRoom $class): string
+{
+    if ($class->delivery_mode === 'online') {
+        $meetingLink = $class->relationLoaded('timetables')
+            ? $class->timetables->firstWhere('meeting_link')?->meeting_link
+            : $class->timetables()->whereNotNull('meeting_link')->value('meeting_link');
+
+        if ($meetingLink) {
+            return $meetingLink;
+        }
+    }
+
+    return route('student.classes.show', $class->id) . ($class->delivery_mode === 'online' ? '#schedule' : '#location');
+}
+
+function studentClassJoinLabel(ClassRoom $class): string
+{
+    return $class->delivery_mode === 'online' ? 'Join Online Class' : 'Join Physical Class';
+}
+
+function syncExamQuestions(Exam $exam, array $questions): void
+{
+    $exam->questions()->delete();
+
+    foreach (array_values($questions) as $index => $questionText) {
+        if (! is_string($questionText) || trim($questionText) === '') {
+            continue;
+        }
+
+        $exam->questions()->create([
+            'question_text' => trim($questionText),
+            'sort_order' => $index + 1,
+        ]);
+    }
+}
+
+function notifyStudentsAboutExam(Exam $exam, string $title, string $message): void
+{
+    $class = $exam->relationLoaded('class') ? $exam->class : $exam->class()->with('students')->first();
+
+    if (! $class) {
+        return;
+    }
+
+    foreach ($class->students as $student) {
+        Notification::create([
+            'user_id' => $student->id,
+            'title' => $title,
+            'message' => $message,
+            'type' => 'exam',
+            'link' => route('student.exams.submit', $exam->id),
+        ]);
+    }
 }
 
 function storeStudentDocument(Request $request, string $field): ?string
@@ -237,12 +298,14 @@ Route::middleware('auth')->group(function () {
         }
 
         if ($user->role === 'student') {
-            $classes = $user->enrolledClasses()->with('trainer')->get();
-            $availableClasses = ClassRoom::with('trainer')
-                ->where('status', 'active')
-                ->whereNotIn('id', $classes->pluck('id'))
-                ->orderBy('name')
-                ->get();
+            $class = studentCurrentClass($user);
+            $classes = $class ? collect([$class]) : collect();
+            $availableClasses = $class
+                ? collect()
+                : ClassRoom::with('trainer')
+                    ->where('status', 'active')
+                    ->orderBy('name')
+                    ->get();
 
             return view('dashboard.student', compact('classes', 'availableClasses'));
         }
@@ -319,6 +382,8 @@ Route::middleware('auth')->group(function () {
             $query->where('type', 'grade');
         } elseif ($filter === 'submission') {
             $query->where('type', 'submission');
+        } elseif ($filter === 'exam') {
+            $query->where('type', 'exam');
         }
 
         $allNotifications = Auth::user()->notifications();
@@ -329,6 +394,7 @@ Route::middleware('auth')->group(function () {
             'homeworkCount' => (clone $allNotifications)->where('type', 'homework')->count(),
             'attendanceCount' => (clone $allNotifications)->where('type', 'attendance')->count(),
             'submissionCount' => (clone $allNotifications)->where('type', 'submission')->count(),
+            'examCount' => (clone $allNotifications)->where('type', 'exam')->count(),
         ]);
     })->name('notifications.index');
 
@@ -411,12 +477,14 @@ Route::middleware('auth')->group(function () {
             $validated = $request->validate([
                 'name' => ['required', 'string', 'max:255'],
                 'room_number' => ['nullable', 'string', 'max:255'],
+                'delivery_mode' => ['required', 'in:online,physical'],
                 'description' => ['nullable', 'string'],
             ]);
 
             $class = new ClassRoom([
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
+                'delivery_mode' => $validated['delivery_mode'],
                 'status' => 'active',
             ]);
             $class->room_number = $validated['room_number'] ?? null;
@@ -437,6 +505,7 @@ Route::middleware('auth')->group(function () {
             $validated = $request->validate([
                 'name' => ['required', 'string', 'max:255'],
                 'room_number' => ['nullable', 'string', 'max:255'],
+                'delivery_mode' => ['required', 'in:online,physical'],
                 'description' => ['nullable', 'string'],
             ]);
 
@@ -526,7 +595,7 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/classes/{id}/exams', function ($id) {
             $class = Auth::user()->taughtClasses()->findOrFail($id);
-            $exams = $class->exams()->withCount('submissions')->orderByRaw('exam_date is null')->orderBy('exam_date')->get();
+            $exams = $class->exams()->withCount(['submissions', 'questions'])->orderByRaw('exam_date is null')->orderBy('exam_date')->get();
             $recentSubmissions = ExamSubmission::with(['student', 'exam'])
                 ->whereHas('exam', fn ($query) => $query->where('class_id', $class->id))
                 ->latest('submitted_at')
@@ -544,6 +613,7 @@ Route::middleware('auth')->group(function () {
                 'class' => $class,
                 'exam' => new Exam(),
                 'mode' => 'create',
+                'questions' => collect(range(1, 5))->map(fn () => ''),
             ]);
         })->name('trainer.exams.create');
 
@@ -553,55 +623,52 @@ Route::middleware('auth')->group(function () {
                 'title' => ['required', 'string', 'max:255'],
                 'description' => ['required', 'string'],
                 'exam_date' => ['nullable', 'date'],
+                'exam_mode' => ['required', 'in:online,physical'],
                 'submission_type' => ['required', 'in:written,file,upload'],
                 'status' => ['required', 'in:open,closed'],
+                'questions' => ['nullable', 'array', 'max:5'],
+                'questions.*' => ['nullable', 'string', 'max:1000'],
             ]);
 
+            $questionTexts = array_values(array_filter($validated['questions'] ?? [], fn ($question) => is_string($question) && trim($question) !== ''));
+
+            if ($validated['exam_mode'] === 'online' && count($questionTexts) === 0) {
+                return back()
+                    ->withErrors(['questions' => 'Online exams need at least one question.'])
+                    ->withInput();
+            }
+
+            $examData = collect($validated)->except('questions')->all();
+
             $exam = $class->exams()->create([
-                ...$validated,
+                ...$examData,
                 'trainer_id' => Auth::id(),
+                'exam_mode' => $validated['exam_mode'],
                 'submission_type' => $validated['submission_type'] === 'file' ? 'upload' : $validated['submission_type'],
             ]);
 
-            foreach ($class->students as $student) {
-                Notification::create([
-                    'user_id' => $student->id,
-                    'title' => 'New exam scheduled',
-                    'message' => "New exam: {$exam->title} for {$class->name}.",
-                    'type' => 'grade',
-                ]);
+            syncExamQuestions($exam, $validated['exam_mode'] === 'online' ? $questionTexts : []);
+
+            if ($validated['exam_mode'] === 'online') {
+                notifyStudentsAboutExam(
+                    $exam,
+                    'New online exam published',
+                    "An online exam, {$exam->title}, is ready for {$class->name}. Use the link to open it."
+                );
+            } else {
+                foreach ($class->students as $student) {
+                    Notification::create([
+                        'user_id' => $student->id,
+                        'title' => 'New exam scheduled',
+                        'message' => "New exam: {$exam->title} for {$class->name}.",
+                        'type' => 'exam',
+                        'link' => route('student.exams.submit', $exam->id),
+                    ]);
+                }
             }
 
             return redirect()->route('trainer.exams.index', $class->id)->with('status', 'Exam created successfully.');
         })->name('trainer.exams.store');
-
-        Route::get('/exams/{exam}/edit', function (Exam $exam) {
-            abort_unless($exam->class && $exam->class->trainer_id === Auth::id(), 403);
-
-            return view('trainer.exams.form', [
-                'class' => $exam->class,
-                'exam' => $exam,
-                'mode' => 'edit',
-            ]);
-        })->name('trainer.exams.edit');
-
-        Route::post('/exams/{exam}', function (Exam $exam, Request $request) {
-            abort_unless($exam->class && $exam->class->trainer_id === Auth::id(), 403);
-            $validated = $request->validate([
-                'title' => ['required', 'string', 'max:255'],
-                'description' => ['required', 'string'],
-                'exam_date' => ['nullable', 'date'],
-                'submission_type' => ['required', 'in:written,file,upload'],
-                'status' => ['required', 'in:open,closed'],
-            ]);
-
-            $exam->update([
-                ...$validated,
-                'submission_type' => $validated['submission_type'] === 'file' ? 'upload' : $validated['submission_type'],
-            ]);
-
-            return redirect()->route('trainer.exams.index', $exam->class_id)->with('status', 'Exam updated successfully.');
-        })->name('trainer.exams.update');
 
         Route::post('/exams/{exam}/delete', function (Exam $exam) {
             abort_unless($exam->class && $exam->class->trainer_id === Auth::id(), 403);
@@ -798,12 +865,46 @@ Route::middleware('auth')->group(function () {
 
             return back()->with('status', 'Marks saved.');
         })->name('trainer.homework.grade');
+
+        Route::get('/exams/{id}/submissions', function ($id) {
+            $exam = Exam::with(['questions', 'class'])
+                ->whereHas('class', fn ($query) => $query->where('trainer_id', Auth::id()))
+                ->findOrFail($id);
+            $submissions = $exam->submissions()->with('student')->latest('submitted_at')->get();
+
+            return view('trainer.exams.submissions', compact('exam', 'submissions'));
+        })->name('trainer.exams.submissions');
+
+        Route::post('/exams/{id}/grade', function ($id, Request $request) {
+            $submission = ExamSubmission::with('exam')->findOrFail($id);
+            abort_unless($submission->exam && $submission->exam->trainer_id === Auth::id(), 403);
+
+            $validated = $request->validate([
+                'marks' => ['required', 'integer', 'min:0', 'max:100'],
+                'feedback' => ['nullable', 'string'],
+            ]);
+
+            $submission->marks = $validated['marks'];
+            $submission->feedback = $validated['feedback'] ?? null;
+            $submission->status = 'graded';
+            $submission->save();
+
+            Notification::create([
+                'user_id' => $submission->student_id,
+                'title' => 'Exam graded',
+                'message' => "Your exam {$submission->exam->title} has been graded.",
+                'type' => 'grade',
+                'link' => route('student.exams.submit', $submission->exam_id),
+            ]);
+
+            return back()->with('status', 'Exam grade saved.');
+        })->name('trainer.exams.grade');
     });
 
     Route::middleware('role:student')->prefix('student')->group(function () {
         Route::get('/classes/{class}', function (ClassRoom $class) {
             $student = Auth::user();
-            abort_unless($student->enrolledClasses()->where('class_rooms.id', $class->id)->exists(), 403);
+            abort_unless($student->current_class_id === $class->id, 403);
 
             $class->load([
                 'trainer',
@@ -824,11 +925,17 @@ Route::middleware('auth')->group(function () {
 
             $student = Auth::user();
 
-            if ($student->enrolledClasses()->where('class_rooms.id', $class->id)->exists()) {
+            if ($student->current_class_id === $class->id) {
                 return redirect()->route('dashboard')->with('status', 'You are already enrolled in that class.');
             }
 
-            $student->enrolledClasses()->attach($class->id);
+            if ($student->current_class_id && $student->current_class_id !== $class->id) {
+                return redirect()->route('dashboard')->with('status', 'You are already enrolled in another class. Unenroll first to join a different one.');
+            }
+
+            $student->current_class_id = $class->id;
+            $student->save();
+            syncStudentEnrollment($student);
 
             if ($class->trainer_id) {
                 Notification::create([
@@ -845,22 +952,20 @@ Route::middleware('auth')->group(function () {
         Route::post('/classes/{class}/unenroll', function (ClassRoom $class) {
             $student = Auth::user();
 
-            if (! $student->enrolledClasses()->where('class_rooms.id', $class->id)->exists()) {
+            if ($student->current_class_id !== $class->id) {
                 return redirect()->route('dashboard')->with('status', 'You are not enrolled in that class.');
             }
 
-            $student->enrolledClasses()->detach($class->id);
-
-            if ($student->current_class_id === $class->id) {
-                $student->current_class_id = null;
-                $student->save();
-            }
+            $student->current_class_id = null;
+            $student->save();
+            syncStudentEnrollment($student);
 
             return redirect()->route('dashboard')->with('status', "You have unenrolled from {$class->name}.");
         })->name('student.classes.unenroll');
 
         Route::get('/timetable', function () {
-            $classes = Auth::user()->enrolledClasses()->with('trainer')->get();
+            $class = studentCurrentClass(Auth::user());
+            $classes = $class ? collect([$class]) : collect();
             $dayOrder = [
                 'Monday' => 1,
                 'Tuesday' => 2,
@@ -871,7 +976,7 @@ Route::middleware('auth')->group(function () {
                 'Sunday' => 7,
             ];
             $timetables = Timetable::with(['class.trainer'])
-                ->whereIn('class_id', $classes->pluck('id'))
+                ->when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))
                 ->get()
                 ->sortBy(fn ($slot) => sprintf('%02d-%s', $dayOrder[$slot->day_of_week] ?? 99, $slot->start_time))
                 ->values();
@@ -880,12 +985,12 @@ Route::middleware('auth')->group(function () {
         })->name('student.timetable.index');
 
         Route::get('/homework', function () {
-            $classes = Auth::user()->enrolledClasses()->get();
+            $class = studentCurrentClass(Auth::user());
             $homeworks = Homework::with([
                 'class.trainer',
                 'submissions' => fn ($query) => $query->where('student_id', Auth::id()),
             ])
-                ->whereIn('class_id', $classes->pluck('id'))
+                ->when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))
                 ->orderByRaw('due_date is null')
                 ->orderBy('due_date')
                 ->get();
@@ -894,12 +999,13 @@ Route::middleware('auth')->group(function () {
         })->name('student.homework.index');
 
         Route::get('/exams', function () {
-            $classes = Auth::user()->enrolledClasses()->get();
+            $class = studentCurrentClass(Auth::user());
             $exams = Exam::with([
                 'class.trainer',
                 'submissions' => fn ($query) => $query->where('student_id', Auth::id()),
             ])
-                ->whereIn('class_id', $classes->pluck('id'))
+                ->withCount('questions')
+                ->when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))
                 ->orderByRaw('exam_date is null')
                 ->orderBy('exam_date')
                 ->get();
@@ -908,8 +1014,10 @@ Route::middleware('auth')->group(function () {
         })->name('student.exams.index');
 
         Route::get('/exams/{id}/submit', function ($id) {
+            $class = studentCurrentClass(Auth::user());
             $exam = Exam::with('class.trainer')
-                ->whereIn('class_id', Auth::user()->enrolledClasses()->pluck('id'))
+                ->with('questions')
+                ->when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))
                 ->findOrFail($id);
             $submission = ExamSubmission::where('exam_id', $id)
                 ->where('student_id', Auth::id())
@@ -919,7 +1027,10 @@ Route::middleware('auth')->group(function () {
         })->name('student.exams.submit');
 
         Route::post('/exams/{id}/submit', function ($id, Request $request) {
-            $exam = Exam::whereIn('class_id', Auth::user()->enrolledClasses()->pluck('id'))->findOrFail($id);
+            $class = studentCurrentClass(Auth::user());
+            $exam = Exam::with('questions')
+                ->when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))
+                ->findOrFail($id);
             abort_if($exam->status === 'closed', 403);
 
             $submission = ExamSubmission::firstOrCreate([
@@ -927,26 +1038,46 @@ Route::middleware('auth')->group(function () {
                 'student_id' => Auth::id(),
             ]);
 
-            if ($exam->submission_type === 'written') {
-                $request->validate([
-                    'content' => ['required', 'string'],
-                ]);
+            if ($exam->isOnline()) {
+                $answerRules = ['answers' => ['required', 'array']];
+                foreach ($exam->questions as $question) {
+                    $answerRules["answers.{$question->id}"] = ['required', 'string', 'max:5000'];
+                }
 
-                $submission->content = $request->input('content');
+                $validated = $request->validate($answerRules);
+
+                $answers = [];
+                foreach ($exam->questions as $question) {
+                    $answers[$question->id] = $validated['answers'][$question->id] ?? '';
+                }
+
+                $submission->content = null;
+                $submission->answers_json = $answers;
                 $submission->file_path = null;
             } else {
-                $request->validate([
-                    'file' => submissionUploadValidationRules(! $submission->file_path),
-                ], submissionUploadValidationMessages('Exam file'));
+                if ($exam->submission_type === 'written') {
+                    $request->validate([
+                        'content' => ['required', 'string'],
+                    ]);
 
-                if ($request->hasFile('file')) {
-                    $previousPath = $submission->file_path;
-                    $path = storeSubmissionFile($request, 'file', 'exams');
-                    $submission->file_path = $path;
-                    $submission->content = null;
+                    $submission->content = $request->input('content');
+                    $submission->answers_json = null;
+                    $submission->file_path = null;
+                } else {
+                    $request->validate([
+                        'file' => submissionUploadValidationRules(! $submission->file_path),
+                    ], submissionUploadValidationMessages('Exam file'));
 
-                    if ($previousPath) {
-                        Storage::disk('public')->delete($previousPath);
+                    if ($request->hasFile('file')) {
+                        $previousPath = $submission->file_path;
+                        $path = storeSubmissionFile($request, 'file', 'exams');
+                        $submission->file_path = $path;
+                        $submission->content = null;
+                        $submission->answers_json = null;
+
+                        if ($previousPath) {
+                            Storage::disk('public')->delete($previousPath);
+                        }
                     }
                 }
             }
@@ -967,8 +1098,9 @@ Route::middleware('auth')->group(function () {
         })->name('student.exams.store');
 
         Route::get('/homework/{id}/submit', function ($id) {
+            $class = studentCurrentClass(Auth::user());
             $homework = Homework::with('class.trainer')
-                ->whereIn('class_id', Auth::user()->enrolledClasses()->pluck('id'))
+                ->when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))
                 ->findOrFail($id);
             $submission = HomeworkSubmission::where('homework_id', $id)
                 ->where('student_id', Auth::id())
@@ -978,7 +1110,8 @@ Route::middleware('auth')->group(function () {
         })->name('student.homework.submit');
 
         Route::post('/homework/{id}/submit', function ($id, Request $request) {
-            $homework = Homework::whereIn('class_id', Auth::user()->enrolledClasses()->pluck('id'))->findOrFail($id);
+            $class = studentCurrentClass(Auth::user());
+            $homework = Homework::when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))->findOrFail($id);
             $submission = HomeworkSubmission::firstOrCreate([
                 'homework_id' => $id,
                 'student_id' => Auth::id(),
@@ -1024,7 +1157,9 @@ Route::middleware('auth')->group(function () {
         })->name('student.homework.store');
 
         Route::get('/attendance', function () {
+            $class = studentCurrentClass(Auth::user());
             $attendance = Auth::user()->attendanceRecords()
+                ->when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))
                 ->with('classRoom', 'timetable')
                 ->latest('marked_at')
                 ->get();

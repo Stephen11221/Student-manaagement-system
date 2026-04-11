@@ -62,6 +62,15 @@
                 </div>
 
                 <div>
+                    <label for="delivery_mode" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Class Mode *</label>
+                    <select id="delivery_mode" name="delivery_mode" required
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <option value="online" {{ old('delivery_mode', $class->delivery_mode) == 'online' ? 'selected' : '' }}>Online</option>
+                        <option value="physical" {{ old('delivery_mode', $class->delivery_mode ?? 'physical') == 'physical' ? 'selected' : '' }}>Physical</option>
+                    </select>
+                </div>
+
+                <div>
                     <label for="status" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status *</label>
                     <select id="status" name="status" required
                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">

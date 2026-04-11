@@ -173,6 +173,7 @@ class AdminController extends Controller
             'trainer_id' => ['required', 'exists:users,id'],
             'max_students' => ['nullable', 'integer', 'min:1'],
             'room_number' => ['nullable', 'string', 'max:50'],
+            'delivery_mode' => ['required', 'in:online,physical'],
             'status' => ['required', 'in:active,inactive'],
         ]);
 
@@ -196,11 +197,12 @@ class AdminController extends Controller
             'trainer_id' => ['required', 'exists:users,id'],
             'max_students' => ['nullable', 'integer', 'min:1'],
             'room_number' => ['nullable', 'string', 'max:50'],
+            'delivery_mode' => ['required', 'in:online,physical'],
             'status' => ['required', 'in:active,inactive'],
         ]);
 
         $changes = [];
-        foreach (['name', 'description', 'trainer_id', 'max_students', 'room_number', 'status'] as $field) {
+        foreach (['name', 'description', 'trainer_id', 'max_students', 'room_number', 'delivery_mode', 'status'] as $field) {
             if ($class->{$field} != ($validated[$field] ?? null)) {
                 $changes[$field] = ['from' => $class->{$field}, 'to' => $validated[$field] ?? null];
             }
