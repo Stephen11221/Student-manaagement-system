@@ -114,6 +114,7 @@
                                         <a href="{{ route('trainer.timetable.edit', $slot->id) }}" class="mini-btn secondary"><i class="fa-solid fa-pen"></i> Edit</a>
                                         <form method="POST" action="{{ route('trainer.timetable.delete', $slot->id) }}" style="margin:0;">
                                             @csrf
+                                            @method('DELETE')
                                             <button type="submit" class="mini-btn danger" onclick="return confirm('Delete this timetable slot?')"><i class="fa-solid fa-trash"></i> Delete</button>
                                         </form>
                                     </div>

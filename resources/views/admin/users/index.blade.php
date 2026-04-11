@@ -160,6 +160,7 @@
                                 @endif
                                 <form method="POST" action="/admin/users/{{ $user->id }}/delete" style="display:inline;">
                                     @csrf
+                                    @method('DELETE')
                                     <button type="submit" class="btn btn-delete" onclick="return confirm('Permanently delete this user?')">
                                         <i class="fas fa-trash"></i> Delete
                                     </button>

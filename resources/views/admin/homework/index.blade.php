@@ -52,9 +52,9 @@
         </header>
 
         <div class="stats-grid">
-            <div class="stat-card"><div class="stat-number">{{ $totalHomework }}</div><div class="stat-label"><i class="fas fa-clipboard-list"></i> Total Homework</div></div>
-            <div class="stat-card"><div class="stat-number">{{ $activeHomework }}</div><div class="stat-label"><i class="fas fa-check-circle"></i> Active</div></div>
-            <div class="stat-card"><div class="stat-number">{{ $totalClasses }}</div><div class="stat-label"><i class="fas fa-chalkboard"></i> Classes</div></div>
+            <div class="stat-card"><div class="stat-number">{{ $totalHomework ?? 0 }}</div><div class="stat-label"><i class="fas fa-clipboard-list"></i> Total Homework</div></div>
+            <div class="stat-card"><div class="stat-number">{{ $activeHomework ?? 0 }}</div><div class="stat-label"><i class="fas fa-check-circle"></i> Active</div></div>
+            <div class="stat-card"><div class="stat-number">{{ $totalClasses ?? 0 }}</div><div class="stat-label"><i class="fas fa-chalkboard"></i> Classes</div></div>
         </div>
 
         @if(session('status'))
@@ -63,20 +63,38 @@
 
         <form method="GET" action="{{ route('admin.homework.index') }}" class="filter-bar">
             <div class="filter-row">
-                <select name="class_id">
+                <input type="text" name="search" placeholder="Search by title..." value="{{ $searchTitle ?? '' }}" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.56);color:#f8fafc;flex:1;min-width:150px;">
+                
+                <select name="class_id" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.56);color:#f8fafc;">
                     <option value="">All classes</option>
-                    @foreach($allClasses as $class)
-                        <option value="{{ $class->id }}" @selected((string) $selectedClassId === (string) $class->id)>{{ $class->name }}</option>
-                    @endforeach
+                    @forelse($allClasses ?? [] as $class)
+                        <option value="{{ $class->id }}" @selected((string) $selectedClassId === (string) $class->id)>{{ $class->name }} ({{ $class->trainer?->name ?? 'No trainer' }}) - {{ $class->homeworks_count }} homework</option>
+                    @empty
+                        <option value="" disabled>No classes available</option>
+                    @endforelse
                 </select>
+                
+                <select name="type" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.56);color:#f8fafc;">
+                    <option value="">All types</option>
+                    <option value="written" @selected(($filterType ?? '') === 'written')>Written</option>
+                    <option value="upload" @selected(($filterType ?? '') === 'upload')>File Upload</option>
+                </select>
+                
+                <select name="status" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.56);color:#f8fafc;">
+                    <option value="">All statuses</option>
+                    <option value="active" @selected(($filterStatus ?? '') === 'active')>Active</option>
+                    <option value="past_due" @selected(($filterStatus ?? '') === 'past_due')>Past Due</option>
+                    <option value="no_deadline" @selected(($filterStatus ?? '') === 'no_deadline')>No Deadline</option>
+                </select>
+                
                 <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filter</button>
-                @if($selectedClassId)
+                @if(($selectedClassId ?? false) || ($searchTitle ?? false) || ($filterType ?? false) || ($filterStatus ?? false))
                     <a href="{{ route('admin.homework.index') }}" class="btn btn-secondary"><i class="fas fa-rotate-left"></i> Clear</a>
                 @endif
             </div>
         </form>
 
-        @forelse($classes as $class)
+        @forelse($classes ?? [] as $class)
             <div class="class-card">
                 <div class="class-header">
                     <div>

@@ -48,6 +48,7 @@
                         <a href="{{ route('trainer.homework.edit', $hw->id) }}" class="btn secondary"><i class="fa-solid fa-pen"></i> Edit</a>
                         <form method="POST" action="{{ route('trainer.homework.delete', $hw->id) }}" style="margin:0;">
                             @csrf
+                            @method('DELETE')
                             <button type="submit" class="btn danger" onclick="return confirm('Delete this homework item?')"><i class="fa-solid fa-trash"></i> Delete</button>
                         </form>
                     </div>

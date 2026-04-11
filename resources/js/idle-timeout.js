@@ -89,8 +89,23 @@ class IdleTimeoutHandler {
         if (form) {
             form.submit();
         } else {
-            // Fallback if no form exists
-            window.location.href = '/logout';
+            // Fallback: Create and submit a form
+            const fallbackForm = document.createElement('form');
+            fallbackForm.method = 'POST';
+            fallbackForm.action = '/logout';
+            
+            // Add CSRF token
+            const token = document.querySelector('meta[name="csrf-token"]');
+            if (token) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = '_token';
+                input.value = token.getAttribute('content');
+                fallbackForm.appendChild(input);
+            }
+            
+            document.body.appendChild(fallbackForm);
+            fallbackForm.submit();
         }
     }
 }

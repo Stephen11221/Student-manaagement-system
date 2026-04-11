@@ -25,6 +25,9 @@ class User extends Authenticatable
         'password',
         'role',
         'department',
+        'department_id',
+        'is_active',
+        'status',
         'career_coach_id',
         'admission_number',
         'date_of_birth',
@@ -42,6 +45,9 @@ class User extends Authenticatable
         'transfer_notes',
         'birth_certificate_path',
         'report_form_path',
+        'last_login_at',
+        'suspended_until',
+        'suspension_reason',
     ];
 
     /**
@@ -67,6 +73,9 @@ class User extends Authenticatable
             'date_of_birth' => 'date',
             'admission_date' => 'date',
             'exit_date' => 'date',
+            'is_active' => 'boolean',
+            'last_login_at' => 'datetime',
+            'suspended_until' => 'datetime',
         ];
     }
 
@@ -200,4 +209,118 @@ class User extends Authenticatable
     {
         return $this->role === 'career_coach';
     }
+
+    /**
+     * User's department
+     */
+    public function department()
+    {
+        return $this->belongsTo(Department::class);
+    }
+
+    /**
+     * Audit logs for this user
+     */
+    public function auditLogs()
+    {
+        return $this->hasMany(AuditLog::class);
+    }
+
+    /**
+     * Check if user is active
+     */
+    public function isActive(): bool
+    {
+        return $this->is_active && $this->status === 'active';
+    }
+
+    /**
+     * Check if user is suspended
+     */
+    public function isSuspended(): bool
+    {
+        if ($this->status === 'suspended' && $this->suspended_until) {
+            return now()->isBefore($this->suspended_until);
+        }
+        return $this->status === 'suspended';
+    }
+
+    /**
+     * Check if user is locked
+     */
+    public function isLocked(): bool
+    {
+        return $this->status === 'locked';
+    }
+
+    /**
+     * Check if user can access the application
+     */
+    public function canAccess(): bool
+    {
+        return $this->isActive() && !$this->isSuspended() && !$this->isLocked();
+    }
+
+    /**
+     * Suspend user until timestamp
+     */
+    public function suspend($until = null, $reason = null)
+    {
+        $this->update([
+            'status' => 'suspended',
+            'suspended_until' => $until,
+            'suspension_reason' => $reason,
+        ]);
+        AuditLog::log('suspend', 'User', $this->id, null, $reason);
+    }
+
+    /**
+     * Unsuspend user
+     */
+    public function unsuspend()
+    {
+        $this->update([
+            'status' => 'active',
+            'suspended_until' => null,
+            'suspension_reason' => null,
+        ]);
+        AuditLog::log('unsuspend', 'User', $this->id);
+    }
+
+    /**
+     * Lock user account
+     */
+    public function lock()
+    {
+        $this->update(['status' => 'locked']);
+        AuditLog::log('lock', 'User', $this->id);
+    }
+
+    /**
+     * Unlock user account
+     */
+    public function unlock()
+    {
+        $this->update(['status' => 'active']);
+        AuditLog::log('unlock', 'User', $this->id);
+    }
+
+    /**
+     * Deactivate user
+     */
+    public function deactivate()
+    {
+        $this->update(['is_active' => false]);
+        AuditLog::log('deactivate', 'User', $this->id);
+    }
+
+    /**
+     * Activate user
+     */
+    public function activate()
+    {
+        $this->update(['is_active' => true]);
+        AuditLog::log('activate', 'User', $this->id);
+    }
 }
+

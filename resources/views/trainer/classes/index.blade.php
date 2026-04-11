@@ -197,6 +197,7 @@
                             <a class="action-btn secondary" href="{{ route('trainer.classes.edit', $cls->id) }}">Edit</a>
                             <form method="POST" action="{{ route('trainer.classes.delete', $cls->id) }}">
                                 @csrf
+                                @method('DELETE')
                                 <button type="submit" class="action-btn danger" onclick="return confirm('Delete this class?')">
                                     Delete
                                 </button>

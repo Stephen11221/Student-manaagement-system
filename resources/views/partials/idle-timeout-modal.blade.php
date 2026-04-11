@@ -6,9 +6,9 @@
             Your session is about to expire due to inactivity. Click "Continue Session" to stay logged in.
         </p>
         <div class="flex gap-3 justify-end">
-            <a href="{{ route('logout') }}" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition">
+            <button onclick="document.getElementById('logoutForm').submit();" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition">
                 Logout
-            </a>
+            </button>
             <button id="continueSession" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
                 Continue Session
             </button>
