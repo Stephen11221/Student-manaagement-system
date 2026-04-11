@@ -17,12 +17,21 @@
 </head>
 <body>
     <div class="container">
+        @php
+            $joinUrl = studentClassJoinUrl($class);
+            $joinLabel = studentClassJoinLabel($class);
+            $primaryMeetingLink = $class->timetables->firstWhere('meeting_link')?->meeting_link;
+        @endphp
         <header>
             <div>
                 <h1 style="margin:0;color:#f8fafc;"><i class="fa-solid fa-school"></i> {{ $class->name }}</h1>
                 <p class="muted" style="margin-top:8px;">{{ $class->description ?: 'No class description yet.' }}</p>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <span class="badge open"><i class="fa-solid fa-circle-info"></i> {{ ucfirst($class->delivery_mode ?? 'physical') }} class</span>
+                <a href="{{ $joinUrl }}" class="btn primary">
+                    <i class="fa-solid fa-arrow-right"></i> {{ $joinLabel }}
+                </a>
                 <a href="{{ route('dashboard') }}" class="btn secondary"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
                 <form method="POST" action="{{ route('student.classes.unenroll', $class->id) }}" style="margin:0;">
                     @csrf
@@ -32,13 +41,14 @@
         </header>
 
         <div class="grid">
-            <div class="panel">
+            <div class="panel" id="location">
                 <h2 style="margin-top:0;color:#f8fafc;"><i class="fa-solid fa-user-tie"></i> Trainer</h2>
                 <p>{{ $class->trainer?->name ?? 'Not assigned' }}</p>
                 <p class="muted">{{ $class->trainer?->email ?? 'No email available' }}</p>
-                <p class="muted">{{ $class->room_number ? 'Room '.$class->room_number : 'Room not set' }}</p>
+                <p class="muted">{{ $class->delivery_mode === 'online' ? 'Live online class' : ($class->room_number ? 'Room '.$class->room_number : 'Room not set') }}</p>
+                <p class="muted">{{ $class->delivery_mode === 'online' ? ($primaryMeetingLink ? 'Tap Join Online Class to open the session.' : 'No meeting link has been added yet.') : 'Use the class room details below to join in person.' }}</p>
             </div>
-            <div class="panel">
+            <div class="panel" id="schedule">
                 <h2 style="margin-top:0;color:#f8fafc;"><i class="fa-regular fa-calendar"></i> Schedule</h2>
                 @forelse($class->timetables as $slot)
                     <div class="item">

@@ -9,6 +9,7 @@ class ClassRoom extends Model
     protected $fillable = [
         'name',
         'room_number',
+        'delivery_mode',
         'description',
         'trainer_id',
         'status',
@@ -37,5 +38,15 @@ class ClassRoom extends Model
     public function students()
     {
         return $this->belongsToMany(User::class, 'class_student', 'class_id', 'student_id');
+    }
+
+    public function isOnline(): bool
+    {
+        return $this->delivery_mode === 'online';
+    }
+
+    public function isPhysical(): bool
+    {
+        return $this->delivery_mode !== 'online';
     }
 }

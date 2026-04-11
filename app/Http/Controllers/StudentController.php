@@ -12,9 +12,10 @@ class StudentController extends Controller
 {
     public function getTimetable()
     {
-        $classes = Auth::user()->enrolledClasses()->get();
-        $timetables = $classes->count() > 0 
-            ? \App\Models\Timetable::whereIn('class_id', $classes->pluck('id'))->orderBy('day_of_week')->get()
+        $class = Auth::user()->currentClass;
+        $classes = $class ? collect([$class]) : collect();
+        $timetables = $class
+            ? \App\Models\Timetable::where('class_id', $class->id)->orderBy('day_of_week')->get()
             : collect();
         
         return view('student.timetable.index', compact('classes', 'timetables'));
@@ -22,9 +23,9 @@ class StudentController extends Controller
 
     public function getHomework()
     {
-        $classes = Auth::user()->enrolledClasses()->get();
-        $homeworks = $classes->count() > 0
-            ? Homework::whereIn('class_id', $classes->pluck('id'))->orderBy('due_date')->get()
+        $class = Auth::user()->currentClass;
+        $homeworks = $class
+            ? Homework::where('class_id', $class->id)->orderBy('due_date')->get()
             : collect();
         
         return view('student.homework.index', compact('homeworks'));
@@ -32,6 +33,8 @@ class StudentController extends Controller
 
     public function submitHomework(Homework $homework)
     {
+        abort_unless($homework->class_id === Auth::user()->current_class_id, 403);
+
         $submission = HomeworkSubmission::where('homework_id', $homework->id)
             ->where('student_id', Auth::id())
             ->first();
@@ -41,6 +44,8 @@ class StudentController extends Controller
 
     public function storeSubmission(Homework $homework, Request $request)
     {
+        abort_unless($homework->class_id === Auth::user()->current_class_id, 403);
+
         $rules = ['homework_id' => ['required']];
         
         if ($homework->submission_type === 'written') {
@@ -74,7 +79,9 @@ class StudentController extends Controller
 
     public function getAttendance()
     {
+        $class = Auth::user()->currentClass;
         $attendance = Attendance::where('student_id', Auth::id())
+            ->when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))
             ->with('classRoom', 'timetable')
             ->get();
 

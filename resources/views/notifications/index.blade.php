@@ -46,6 +46,7 @@
         .badge-grade { background:rgba(16,185,129,.2); color:#10b981; }
         .badge-class { background:rgba(168,85,247,.2); color:#d8b4fe; }
         .badge-submission { background:rgba(250,204,21,.18); color:#fde047; }
+        .badge-exam { background:rgba(59,130,246,.18); color:#93c5fd; }
     </style>
 </head>
 <body>
@@ -67,6 +68,7 @@
             <div class="stat-card"><div class="stat-number">{{ $submissionCount }}</div><div class="stat-label">Submissions</div></div>
             <div class="stat-card"><div class="stat-number">{{ $homeworkCount }}</div><div class="stat-label">Homework</div></div>
             <div class="stat-card"><div class="stat-number">{{ $attendanceCount }}</div><div class="stat-label">Attendance</div></div>
+            <div class="stat-card"><div class="stat-number">{{ $examCount ?? 0 }}</div><div class="stat-label">Exams</div></div>
         </div>
 
         <div class="filter-bar">
@@ -76,6 +78,7 @@
                 <button type="submit" name="filter" value="submission" class="filter-btn {{ request('filter') === 'submission' ? 'active' : '' }}"><i class="fa-solid fa-cloud-arrow-up"></i> Uploads</button>
                 <button type="submit" name="filter" value="homework" class="filter-btn {{ request('filter') === 'homework' ? 'active' : '' }}"><i class="fa-solid fa-file-pen"></i> Homework</button>
                 <button type="submit" name="filter" value="attendance" class="filter-btn {{ request('filter') === 'attendance' ? 'active' : '' }}"><i class="fa-solid fa-clipboard-check"></i> Attendance</button>
+                <button type="submit" name="filter" value="exam" class="filter-btn {{ request('filter') === 'exam' ? 'active' : '' }}"><i class="fa-solid fa-file-signature"></i> Exams</button>
             </form>
         </div>
 
@@ -95,6 +98,8 @@
                             <i class="fa-solid fa-bullhorn"></i>
                         @elseif ($notification->type === 'submission')
                             <i class="fa-solid fa-cloud-arrow-up"></i>
+                        @elseif ($notification->type === 'exam')
+                            <i class="fa-solid fa-file-signature"></i>
                         @else
                             <i class="fa-solid fa-circle-info"></i>
                         @endif
@@ -114,10 +119,17 @@
                             <span class="badge badge-announcement">Announcement</span>
                         @elseif ($notification->type === 'submission')
                             <span class="badge badge-submission">Upload</span>
+                        @elseif ($notification->type === 'exam')
+                            <span class="badge badge-exam">Exam</span>
                         @endif
                         </div>
                         <div class="notification-message">{{ $notification->message }}</div>
                         <div class="notification-time"><i class="fa-regular fa-clock"></i> {{ $notification->created_at->diffForHumans() }}</div>
+                        @if($notification->link)
+                            <div style="margin-top:12px;">
+                                <a href="{{ $notification->link }}" class="action-btn"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open</a>
+                            </div>
+                        @endif
                     </div>
                     <div class="notification-actions">
                         @if (is_null($notification->read_at))

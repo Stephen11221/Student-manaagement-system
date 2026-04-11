@@ -30,11 +30,13 @@ class TrainerController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
+            'delivery_mode' => ['required', 'in:online,physical'],
         ]);
 
         $classroom = ClassRoom::create([
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
+            'delivery_mode' => $validated['delivery_mode'],
             'trainer_id' => Auth::id(),
             'status' => 'active',
         ]);

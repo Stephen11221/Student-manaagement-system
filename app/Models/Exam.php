@@ -12,6 +12,7 @@ class Exam extends Model
         'title',
         'description',
         'exam_date',
+        'exam_mode',
         'submission_type',
         'status',
     ];
@@ -33,5 +34,15 @@ class Exam extends Model
     public function submissions()
     {
         return $this->hasMany(ExamSubmission::class);
+    }
+
+    public function questions()
+    {
+        return $this->hasMany(ExamQuestion::class)->orderBy('sort_order');
+    }
+
+    public function isOnline(): bool
+    {
+        return ($this->exam_mode ?? 'online') === 'online';
     }
 }
