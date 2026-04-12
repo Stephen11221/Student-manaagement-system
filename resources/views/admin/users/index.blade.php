@@ -112,7 +112,7 @@
                         <td>
                             <strong>{{ $user->name }}</strong>
                             @if($user->role === 'student' && $user->guardian_name)
-                                <div class="muted"><i class="fas fa-people-roof"></i> Guardian: { { $user->guardian_name }}</div>
+                                <div class="muted"><i class="fas fa-people-roof"></i> Guardian: {{ $user->guardian_name }}</div>
                             @endif
                         </td>
                         <td>{{ $user->admission_number ?? '-' }}</td>

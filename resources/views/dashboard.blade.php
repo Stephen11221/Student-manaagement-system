@@ -217,6 +217,7 @@
             </section>
         </main>
 
+        @include('partials.chat-fab')
         @include('partials.idle-timeout-modal')
 
         <script src="{{ asset('js/idle-timeout.js') }}"></script>

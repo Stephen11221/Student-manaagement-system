@@ -81,6 +81,351 @@ function studentClassJoinLabel(ClassRoom $class): string
     return $class->delivery_mode === 'online' ? 'Join Online Class' : 'Join Physical Class';
 }
 
+function normalizeImportHeader(string $header): string
+{
+    $header = preg_replace('/^\xEF\xBB\xBF/', '', trim($header)) ?? trim($header);
+
+    return preg_replace('/[^a-z0-9]+/i', '', strtolower($header)) ?? strtolower($header);
+}
+
+function canonicalStudentImportField(string $header): ?string
+{
+    static $map = [
+        'name' => 'name',
+        'fullname' => 'name',
+        'studentname' => 'name',
+        'middlename' => 'middle_name',
+        'middle_name' => 'middle_name',
+        'middleinitial' => 'middle_name',
+        'lastname' => 'last_name',
+        'secondname' => 'last_name',
+        'firstname' => 'first_name',
+        'firstnameandlastname' => 'name',
+        'surname' => 'last_name',
+        'email' => 'email',
+        'emailaddress' => 'email',
+        'password' => 'password',
+        'phone' => 'phone',
+        'phonenumber' => 'phone',
+        'mobile' => 'phone',
+        'department' => 'department',
+        'dateofbirth' => 'date_of_birth',
+        'dob' => 'date_of_birth',
+        'gender' => 'gender',
+        'address' => 'address',
+        'guardianname' => 'guardian_name',
+        'parentname' => 'guardian_name',
+        'parent_name' => 'guardian_name',
+        'parent' => 'guardian_name',
+        'guardianphone' => 'guardian_phone',
+        'parentphone' => 'guardian_phone',
+        'parent_phone' => 'guardian_phone',
+        'guardianrelationship' => 'guardian_relationship',
+        'parentrelationship' => 'guardian_relationship',
+        'parent_relationship' => 'guardian_relationship',
+        'currentclassid' => 'current_class_id',
+        'classid' => 'current_class_id',
+        'class' => 'current_class_id',
+        'classname' => 'class_name',
+        'stream' => 'stream',
+        'studentstatus' => 'student_status',
+        'status' => 'student_status',
+        'admissionnumber' => 'admission_number',
+        'admissionno' => 'admission_number',
+        'admno' => 'admission_number',
+        'regno' => 'admission_number',
+        'admissiondate' => 'admission_date',
+        'exitdate' => 'exit_date',
+        'transfernotes' => 'transfer_notes',
+        'careercoachid' => 'career_coach_id',
+        'careercoach' => 'career_coach_id',
+        'coachemail' => 'career_coach_id',
+        'coachid' => 'career_coach_id',
+        'coachname' => 'career_coach_id',
+    ];
+
+    return $map[normalizeImportHeader($header)] ?? null;
+}
+
+function splitImportLine(string $line): array
+{
+    $line = trim($line);
+
+    if ($line === '') {
+        return [];
+    }
+
+    if (str_contains($line, "\t")) {
+        return array_map('trim', explode("\t", $line));
+    }
+
+    if (str_contains($line, '|')) {
+        return array_map('trim', explode('|', $line));
+    }
+
+    if (str_contains($line, ',')) {
+        return array_map('trim', str_getcsv($line));
+    }
+
+    return array_map('trim', preg_split('/\s{2,}/', $line) ?: [$line]);
+}
+
+function parseDelimitedStudentImportRows(string $text): array
+{
+    $lines = array_values(array_filter(
+        array_map('trim', preg_split('/\R/', $text) ?: []),
+        fn ($line) => $line !== '',
+    ));
+
+    if ($lines === []) {
+        return [];
+    }
+
+    $headerCells = splitImportLine(array_shift($lines));
+    $headers = [];
+
+    foreach ($headerCells as $cell) {
+        $headers[] = canonicalStudentImportField($cell);
+    }
+
+    $rows = [];
+
+    foreach ($lines as $line) {
+        $values = splitImportLine($line);
+        $row = [];
+
+        foreach ($headers as $index => $field) {
+            if (! $field) {
+                continue;
+            }
+
+            $row[$field] = $values[$index] ?? '';
+        }
+
+        if ($row !== []) {
+            $rows[] = $row;
+        }
+    }
+
+    return $rows;
+}
+
+function xlsxColumnIndex(string $column): int
+{
+    $column = strtoupper(trim($column));
+    $index = 0;
+
+    foreach (str_split($column) as $char) {
+        if ($char < 'A' || $char > 'Z') {
+            continue;
+        }
+
+        $index = ($index * 26) + (ord($char) - 64);
+    }
+
+    return $index;
+}
+
+function xlsxSharedStrings(string $path): array
+{
+    $zip = new ZipArchive();
+
+    if ($zip->open($path) !== true) {
+        return [];
+    }
+
+    $xml = $zip->getFromName('xl/sharedStrings.xml') ?: '';
+    $zip->close();
+
+    if ($xml === '') {
+        return [];
+    }
+
+    $doc = new DOMDocument();
+    $doc->preserveWhiteSpace = false;
+
+    if (! $doc->loadXML($xml)) {
+        return [];
+    }
+
+    $xpath = new DOMXPath($doc);
+    $xpath->registerNamespace('a', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+
+    $strings = [];
+    foreach ($xpath->query('//a:si') as $node) {
+        $text = '';
+        foreach ($xpath->query('.//a:t', $node) as $textNode) {
+            $text .= $textNode->textContent;
+        }
+
+        $strings[] = $text;
+    }
+
+    return $strings;
+}
+
+function parseXlsxStudentImportRows(string $path): array
+{
+    $zip = new ZipArchive();
+
+    if ($zip->open($path) !== true) {
+        return [];
+    }
+
+    $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml') ?: '';
+    $zip->close();
+
+    if ($sheetXml === '') {
+        return [];
+    }
+
+    $sharedStrings = xlsxSharedStrings($path);
+    $doc = new DOMDocument();
+    $doc->preserveWhiteSpace = false;
+
+    if (! $doc->loadXML($sheetXml)) {
+        return [];
+    }
+
+    $xpath = new DOMXPath($doc);
+    $xpath->registerNamespace('a', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+
+    $rows = [];
+    foreach ($xpath->query('//a:sheetData/a:row') as $rowNode) {
+        $cells = [];
+
+        foreach ($xpath->query('a:c', $rowNode) as $cellNode) {
+            $ref = $cellNode->attributes?->getNamedItem('r')?->nodeValue ?? '';
+            $columnLetters = preg_replace('/\d+$/', '', $ref) ?: '';
+            $columnIndex = xlsxColumnIndex($columnLetters);
+            $type = $cellNode->attributes?->getNamedItem('t')?->nodeValue ?? '';
+            $value = '';
+
+            if ($type === 's') {
+                $sharedIndex = (int) ($xpath->evaluate('string(a:v)', $cellNode) ?: 0);
+                $value = $sharedStrings[$sharedIndex] ?? '';
+            } elseif ($type === 'inlineStr') {
+                $value = trim($xpath->evaluate('string(a:is//a:t)', $cellNode));
+            } else {
+                $value = trim($xpath->evaluate('string(a:v)', $cellNode));
+            }
+
+            if ($columnIndex > 0) {
+                $cells[$columnIndex] = $value;
+            }
+        }
+
+        ksort($cells);
+        $rows[] = array_values($cells);
+    }
+
+    if ($rows === []) {
+        return [];
+    }
+
+    $headers = array_map(
+        fn ($header) => canonicalStudentImportField((string) $header),
+        array_shift($rows),
+    );
+
+    $importRows = [];
+    foreach ($rows as $rowValues) {
+        $row = [];
+
+        foreach ($headers as $index => $field) {
+            if (! $field) {
+                continue;
+            }
+
+            $row[$field] = $rowValues[$index] ?? '';
+        }
+
+        if ($row !== []) {
+            $importRows[] = $row;
+        }
+    }
+
+    return $importRows;
+}
+
+function extractStudentImportTextFromPdf(string $path): string
+{
+    $command = sprintf(
+        'pdftotext -layout -nopgbrk %s - 2>/dev/null',
+        escapeshellarg($path),
+    );
+
+    $output = shell_exec($command);
+
+    return is_string($output) ? $output : '';
+}
+
+function extractStudentImportRowsFromUpload(UploadedFile $file): array
+{
+    $extension = strtolower($file->getClientOriginalExtension());
+    $path = $file->getRealPath() ?: $file->path();
+
+    return match ($extension) {
+        'xlsx' => parseXlsxStudentImportRows($path),
+        'pdf' => parseDelimitedStudentImportRows(extractStudentImportTextFromPdf($path)),
+        default => parseDelimitedStudentImportRows((string) file_get_contents($path)),
+    };
+}
+
+function resolveImportedClassId(?string $value, ?int $defaultId = null): ?int
+{
+    $value = trim((string) $value);
+
+    if ($value === '') {
+        return $defaultId;
+    }
+
+    if (ctype_digit($value)) {
+        return ClassRoom::find((int) $value)?->id ?? $defaultId;
+    }
+
+    return ClassRoom::whereRaw('LOWER(name) = ?', [strtolower($value)])->value('id') ?? $defaultId;
+}
+
+function resolveImportedCoachId(?string $value, ?int $defaultId = null): ?int
+{
+    $value = trim((string) $value);
+
+    if ($value === '') {
+        return $defaultId;
+    }
+
+    if (ctype_digit($value)) {
+        return User::find((int) $value)?->id ?? $defaultId;
+    }
+
+    return User::where(function ($query) use ($value) {
+        $query->whereRaw('LOWER(email) = ?', [strtolower($value)])
+            ->orWhereRaw('LOWER(name) = ?', [strtolower($value)]);
+    })->value('id') ?? $defaultId;
+}
+
+function buildImportedStudentName(array $row): string
+{
+    $name = trim((string) ($row['name'] ?? ''));
+
+    if ($name !== '') {
+        return $name;
+    }
+
+    $parts = [
+        trim((string) ($row['first_name'] ?? '')),
+        trim((string) ($row['middle_name'] ?? '')),
+        trim((string) ($row['last_name'] ?? '')),
+    ];
+
+    if (($row['first_name'] ?? '') === '' && ($row['last_name'] ?? '') === '') {
+        $parts[] = trim((string) ($row['surname'] ?? ''));
+    }
+
+    return trim(implode(' ', array_filter($parts, fn ($part) => $part !== '')));
+}
+
 function extractExamQuestionTextFromDocx(string $path): string
 {
     $zip = new ZipArchive();
@@ -671,7 +1016,7 @@ Route::middleware('auth')->group(function () {
             return redirect()->route('trainer.timetable.index', $timetable->class_id)->with('status', 'Timetable slot updated.');
         })->name('trainer.timetable.update');
 
-        Route::post('/timetable/{timetable}/delete', function (Timetable $timetable) {
+        Route::delete('/timetable/{timetable}/delete', function (Timetable $timetable) {
             abort_unless($timetable->class && $timetable->class->trainer_id === Auth::id(), 403);
             $classId = $timetable->class_id;
             $timetable->delete();
@@ -770,7 +1115,7 @@ Route::middleware('auth')->group(function () {
             return redirect()->route('trainer.exams.index', $class->id)->with('status', 'Exam created successfully.');
         })->name('trainer.exams.store');
 
-        Route::post('/exams/{exam}/delete', function (Exam $exam) {
+        Route::delete('/exams/{exam}/delete', function (Exam $exam) {
             abort_unless($exam->class && $exam->class->trainer_id === Auth::id(), 403);
             $classId = $exam->class_id;
             $exam->delete();
@@ -1395,6 +1740,208 @@ Route::middleware('auth')->group(function () {
             return redirect()->route('admin.users.index')->with('status', 'User created.');
         })->name('admin.users.store');
 
+        Route::post('/users/import-students', function (Request $request) {
+            $validated = $request->validate([
+                'student_import_file' => ['required', 'file', 'mimes:csv,txt,pdf,xlsx'],
+                'student_import_password' => ['required', 'string', 'min:8'],
+                'student_import_class_id' => ['nullable', 'exists:class_rooms,id'],
+                'student_import_career_coach_id' => ['nullable', 'exists:users,id'],
+                'student_import_department' => ['nullable', 'string', 'max:255'],
+                'student_import_student_status' => ['nullable', 'in:active,transferred,alumni'],
+            ]);
+
+            $importRows = extractStudentImportRowsFromUpload($request->file('student_import_file'));
+
+            if (count($importRows) === 0) {
+                return back()
+                    ->withErrors(['student_import_file' => 'No student rows could be read from the uploaded file.'])
+                    ->withInput();
+            }
+
+            $created = 0;
+            $skipped = [];
+            $defaultClassId = $validated['student_import_class_id'] ?? null;
+            $defaultCoachId = $validated['student_import_career_coach_id'] ?? null;
+            $defaultDepartment = trim((string) ($validated['student_import_department'] ?? ''));
+            $defaultStatus = $validated['student_import_student_status'] ?? 'active';
+
+            foreach ($importRows as $index => $row) {
+                $rowNumber = $index + 2;
+
+                try {
+                    $name = buildImportedStudentName($row);
+
+                    $email = trim((string) ($row['email'] ?? ''));
+
+                    if ($name === '' || $email === '') {
+                        $skipped[] = "Row {$rowNumber}: missing name or email.";
+                        continue;
+                    }
+
+                    if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        $skipped[] = "Row {$rowNumber}: invalid email address.";
+                        continue;
+                    }
+
+                    if (User::withTrashed()->whereRaw('LOWER(email) = ?', [strtolower($email)])->exists()) {
+                        $skipped[] = "Row {$rowNumber}: email {$email} already exists.";
+                        continue;
+                    }
+
+                    $password = trim((string) ($row['password'] ?? '')) ?: $validated['student_import_password'];
+                    $studentStatus = trim((string) ($row['student_status'] ?? '')) ?: $defaultStatus;
+                    $admissionDate = trim((string) ($row['admission_date'] ?? '')) ?: now()->toDateString();
+                    $classId = resolveImportedClassId($row['current_class_id'] ?? $row['class_id'] ?? $row['class_name'] ?? null, $defaultClassId);
+                    $coachId = resolveImportedCoachId($row['career_coach_id'] ?? $row['coach_id'] ?? $row['coach_name'] ?? $row['coach_email'] ?? null, $defaultCoachId);
+                    $admissionNumber = trim((string) ($row['admission_number'] ?? '')) ?: generateAdmissionNumber();
+
+                    $student = User::create([
+                        'name' => $name,
+                        'email' => $email,
+                        'password' => Hash::make($password),
+                        'role' => 'student',
+                        'department' => trim((string) ($row['department'] ?? $defaultDepartment)) ?: null,
+                        'career_coach_id' => $coachId,
+                        'admission_number' => $admissionNumber,
+                        'date_of_birth' => ! empty($row['date_of_birth']) ? $row['date_of_birth'] : null,
+                        'gender' => ! empty($row['gender']) ? strtolower(trim((string) $row['gender'])) : null,
+                        'phone' => ! empty($row['phone']) ? $row['phone'] : null,
+                        'address' => ! empty($row['address']) ? $row['address'] : null,
+                        'guardian_name' => ! empty($row['guardian_name']) ? $row['guardian_name'] : null,
+                        'guardian_phone' => ! empty($row['guardian_phone']) ? $row['guardian_phone'] : null,
+                        'guardian_relationship' => ! empty($row['guardian_relationship']) ? $row['guardian_relationship'] : null,
+                        'current_class_id' => $classId,
+                        'stream' => ! empty($row['stream']) ? $row['stream'] : null,
+                        'student_status' => in_array($studentStatus, ['active', 'transferred', 'alumni'], true) ? $studentStatus : $defaultStatus,
+                        'admission_date' => $admissionDate,
+                        'exit_date' => ! empty($row['exit_date']) ? $row['exit_date'] : null,
+                        'transfer_notes' => ! empty($row['transfer_notes']) ? $row['transfer_notes'] : null,
+                    ]);
+
+                    syncStudentEnrollment($student);
+                    $created++;
+                } catch (\Throwable $e) {
+                    $skipped[] = "Row {$rowNumber}: import failed.";
+                }
+            }
+
+            $message = "Imported {$created} student" . ($created === 1 ? '' : 's') . '.';
+            if ($skipped !== []) {
+                $message .= ' Skipped ' . count($skipped) . ' row' . (count($skipped) === 1 ? '' : 's') . '.';
+            }
+
+            return redirect()
+                ->route('admin.users.create')
+                ->with('status', $message)
+                ->with('import_warnings', array_slice($skipped, 0, 5));
+        })->name('admin.users.import-students');
+
+        Route::get('/users/import-students-template', function () {
+            $headers = [
+                'name',
+                'first_name',
+                'middle_name',
+                'last_name',
+                'email',
+                'password',
+                'phone',
+                'department',
+                'date_of_birth',
+                'gender',
+                'address',
+                'guardian_name',
+                'guardian_phone',
+                'guardian_relationship',
+                'parent_name',
+                'parent_phone',
+                'parent_relationship',
+                'admission_number',
+                'current_class_id',
+                'class_name',
+                'stream',
+                'student_status',
+                'admission_date',
+                'exit_date',
+                'transfer_notes',
+                'career_coach_id',
+                'career_coach_email',
+            ];
+
+            $sampleRows = [
+                [
+                    'John Doe',
+                    'John',
+                    'Michael',
+                    'Doe',
+                    'john.doe@example.com',
+                    'Student@123',
+                    '+254700000001',
+                    'Science',
+                    '2010-05-12',
+                    'male',
+                    'Nairobi',
+                    'Jane Doe',
+                    '+254700000002',
+                    'Mother',
+                    'Jane Doe',
+                    '+254700000002',
+                    'Mother',
+                    'ADM20260001',
+                    '1',
+                    'Grade 10 A',
+                    'East',
+                    'active',
+                    '2026-01-10',
+                    '',
+                    '',
+                    '2',
+                    'coach@example.com',
+                ],
+                [
+                    'Mary Wanjiku',
+                    'Mary',
+                    '',
+                    'Wanjiku',
+                    'mary.wanjiku@example.com',
+                    'Student@123',
+                    '+254700000003',
+                    'Arts',
+                    '2009-11-04',
+                    'female',
+                    'Kiambu',
+                    'Peter Wanjiku',
+                    '+254700000004',
+                    'Father',
+                    'Peter Wanjiku',
+                    '+254700000004',
+                    'Father',
+                    'ADM20260002',
+                    '2',
+                    'Grade 9 B',
+                    'West',
+                    'active',
+                    '2026-01-10',
+                    '',
+                    '',
+                    '2',
+                    'coach@example.com',
+                ],
+            ];
+
+            return response()->streamDownload(function () use ($headers, $sampleRows) {
+                $output = fopen('php://output', 'w');
+                fputcsv($output, $headers);
+
+                foreach ($sampleRows as $row) {
+                    fputcsv($output, $row);
+                }
+
+                fclose($output);
+            }, 'student-import-template.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
+        })->name('admin.users.import-students-template');
+
         Route::get('/users/{id}/edit', function ($id) {
             $user = User::withTrashed()->findOrFail($id);
             $careerCoaches = User::where('role', 'career_coach')->orderBy('name')->get();
@@ -1516,7 +2063,7 @@ Route::middleware('auth')->group(function () {
             return redirect()->route('admin.users.index')->with('status', 'User activated successfully.');
         })->name('admin.users.activate');
 
-        Route::post('/users/{id}/delete', function ($id) {
+        Route::delete('/users/{id}/delete', function ($id) {
             $user = User::withTrashed()->findOrFail($id);
             deleteUserStudentDocuments($user);
             $user->enrolledClasses()->detach();

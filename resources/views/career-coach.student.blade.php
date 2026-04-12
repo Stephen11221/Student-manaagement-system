@@ -59,5 +59,7 @@
             </div>
         </div>
     </div>
+
+    @include('partials.chat-fab')
 </body>
 </html>

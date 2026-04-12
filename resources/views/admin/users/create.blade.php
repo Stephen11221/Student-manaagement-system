@@ -33,6 +33,21 @@
                     </ul>
                 </div>
             @endif
+            @if(session('status'))
+                <div class="error-box" style="background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.3);color:#86efac;">
+                    <i class="fas fa-circle-check"></i> {{ session('status') }}
+                </div>
+            @endif
+            @if(session('import_warnings'))
+                <div class="error-box" style="background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.3);color:#fde68a;">
+                    <strong><i class="fas fa-triangle-exclamation"></i> Some rows were skipped.</strong>
+                    <ul class="error-list">
+                        @foreach(session('import_warnings') as $warning)
+                            <li>{{ $warning }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
             <form method="POST" action="{{ route('admin.users.store') }}" enctype="multipart/form-data">
                 @csrf
                 <div class="form-section">
@@ -181,6 +196,80 @@
                 </div>
                 <button type="submit"><i class="fas fa-check"></i> Create User</button>
             </form>
+            <div class="form-section" style="margin-top:24px;">
+                <h3><i class="fas fa-file-import"></i> Bulk Student Import</h3>
+                <p class="hint" style="margin-bottom:14px;">
+                    Upload a CSV, XLSX, TXT, or PDF file to create students only. The first row should contain headers such as
+                    <code>name</code>, <code>first_name</code>, <code>middle_name</code>, <code>last_name</code>,
+                    <code>email</code>, <code>password</code>,
+                    <code>admission_number</code>, <code>current_class_id</code>, <code>class_name</code>,
+                    <code>phone</code>, <code>department</code>, <code>guardian_name</code>, and <code>parent_phone</code>.
+                    PDF files should be text-based tables, not scanned images.
+                </p>
+                <div style="margin-bottom:14px;">
+                    <a href="{{ route('admin.users.import-students-template') }}" class="back-link" style="margin-top:0;">
+                        <i class="fas fa-download"></i> Download student template
+                    </a>
+                </div>
+
+                <form method="POST" action="{{ route('admin.users.import-students') }}" enctype="multipart/form-data">
+                    @csrf
+                    <div class="form-group">
+                        <div>
+                            <label>Student File</label>
+                            <input type="file" name="student_import_file" accept=".csv,.txt,.xlsx,.pdf" required>
+                            <div class="hint">Supported: CSV, TXT, XLSX, PDF.</div>
+                            @error('student_import_file')
+                                <div class="field-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+                        <div>
+                            <label>Default Password</label>
+                            <input type="password" name="student_import_password" required placeholder="Temporary password for imported students">
+                            <div class="hint">Used when the file row does not include a password.</div>
+                            @error('student_import_password')
+                                <div class="field-error">{{ $message }}</div>
+                            @enderror
+                        </div>
+                        <div>
+                            <label>Default Class</label>
+                            <select name="student_import_class_id">
+                                <option value="">No class assigned</option>
+                                @foreach($classes as $class)
+                                    <option value="{{ $class->id }}">{{ $class->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label>Default Career Coach</label>
+                            <select name="student_import_career_coach_id">
+                                <option value="">No coach assigned</option>
+                                @foreach($careerCoaches as $coach)
+                                    <option value="{{ $coach->id }}">{{ $coach->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label>Default Department</label>
+                            <input type="text" name="student_import_department" placeholder="Applied to rows without a department">
+                        </div>
+                        <div class="full-width">
+                            <label>Student Only</label>
+                            <input type="text" value="This import creates student accounts only." disabled>
+                            <div class="hint">Trainer, admin, and staff roles are intentionally not part of this upload flow.</div>
+                        </div>
+                        <div>
+                            <label>Default Student Status</label>
+                            <select name="student_import_student_status">
+                                <option value="active">Active</option>
+                                <option value="transferred">Transferred</option>
+                                <option value="alumni">Alumni</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" style="margin-top:16px;"><i class="fas fa-upload"></i> Import Students</button>
+                </form>
+            </div>
             <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;">
                 <a href="{{ route('dashboard') }}" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
                 <a href="{{ route('admin.users.index') }}" class="back-link"><i class="fas fa-arrow-left"></i> Back to Users</a>
