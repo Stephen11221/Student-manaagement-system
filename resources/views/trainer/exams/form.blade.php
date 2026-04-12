@@ -31,7 +31,7 @@
                     <strong><i class="fa-solid fa-triangle-exclamation"></i> Please fix the errors below.</strong>
                 </div>
             @endif
-            <form method="POST" action="{{ route('trainer.exams.store', $class->id) }}">
+            <form method="POST" action="{{ route('trainer.exams.store', $class->id) }}" enctype="multipart/form-data">
                 @csrf
                 <div class="grid">
                     <div class="full">
@@ -73,9 +73,17 @@
                     <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
                         <div>
                             <h2 style="margin:0;color:#f8fafc;">Online Questions</h2>
-                            <div class="hint">Add up to 5 questions for the online exam. Students will answer each question directly in their submission form.</div>
+                            <div class="hint">Add up to 5 questions for the online exam, or upload a file and let the system extract the questions for you.</div>
                         </div>
                         <div class="hint"><i class="fa-solid fa-circle-info"></i> Max 5 questions</div>
+                    </div>
+                    <div class="question-card" style="margin-bottom:14px;">
+                        <label>Upload Question File</label>
+                        <input type="file" name="question_file" accept=".txt,.md,.csv,.pdf,.docx">
+                        <div class="hint" style="margin-top:8px;">Supported files: TXT, MD, CSV, PDF, DOCX. If a file is uploaded, the system extracts the questions from it and ignores the text boxes below.</div>
+                        @error('question_file')
+                            <div style="color:#ef4444;font-size:.85rem;margin-top:8px;">{{ $message }}</div>
+                        @enderror
                     </div>
                     <div class="grid" style="grid-template-columns:1fr;">
                         @for ($i = 0; $i < 5; $i++)
