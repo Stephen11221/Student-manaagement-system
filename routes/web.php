@@ -514,7 +514,7 @@ Route::middleware('auth')->group(function () {
             return redirect()->route('trainer.classes.index')->with('status', 'Class updated.');
         })->name('trainer.classes.update');
 
-        Route::post('/classes/{id}/delete', function ($id) {
+        Route::delete('/classes/{id}/delete', function ($id) {
             $class = Auth::user()->taughtClasses()->findOrFail($id);
             $class->delete();
 
