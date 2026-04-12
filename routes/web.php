@@ -12,6 +12,7 @@ use App\Models\Notification;
 use App\Models\Timetable;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
@@ -78,6 +79,98 @@ function studentClassJoinUrl(ClassRoom $class): string
 function studentClassJoinLabel(ClassRoom $class): string
 {
     return $class->delivery_mode === 'online' ? 'Join Online Class' : 'Join Physical Class';
+}
+
+function extractExamQuestionTextFromDocx(string $path): string
+{
+    $zip = new ZipArchive();
+
+    if ($zip->open($path) !== true) {
+        return '';
+    }
+
+    $xml = $zip->getFromName('word/document.xml') ?: '';
+    $zip->close();
+
+    if ($xml === '') {
+        return '';
+    }
+
+    $xml = str_replace(['</w:p>', '</w:tr>', '<w:br/>', '<w:br />'], "\n", $xml);
+    $text = strip_tags($xml);
+
+    return html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
+}
+
+function extractExamQuestionTextFromPdf(string $path): string
+{
+    $command = sprintf(
+        'pdftotext -layout -nopgbrk %s - 2>/dev/null',
+        escapeshellarg($path),
+    );
+
+    $output = shell_exec($command);
+
+    return is_string($output) ? $output : '';
+}
+
+function extractExamQuestionsFromText(string $text): array
+{
+    $text = str_replace("\r\n", "\n", $text);
+    $text = str_replace("\r", "\n", $text);
+
+    $lines = array_values(array_filter(array_map('trim', preg_split('/\n+/', $text) ?: [])));
+    $questions = [];
+    $buffer = '';
+
+    foreach ($lines as $line) {
+        $line = preg_replace('/^\x{feff}/u', '', $line) ?? $line;
+
+        if (preg_match('/^(?:question\s*)?(\d+)[\.\)\:\-]\s*(.+)$/iu', $line, $matches)) {
+            if (trim($buffer) !== '') {
+                $questions[] = trim($buffer);
+            }
+
+            $buffer = trim($matches[2]);
+
+            continue;
+        }
+
+        if ($buffer !== '') {
+            if (preg_match('/^[A-Da-d][\.\)]\s+/', $line) || preg_match('/^(?:option|answer)\s+/i', $line)) {
+                $buffer .= ' ' . $line;
+                continue;
+            }
+
+            if (preg_match('/^(?:\d+[\.\)]|question\s*\d+)/i', $line)) {
+                continue;
+            }
+
+            $buffer .= ' ' . $line;
+        }
+    }
+
+    if (trim($buffer) !== '') {
+        $questions[] = trim($buffer);
+    }
+
+    return array_values(array_filter(array_map(
+        fn ($question) => trim(preg_replace('/\s+/', ' ', $question) ?? $question),
+        $questions,
+    )));
+}
+
+function extractExamQuestionsFromUpload(UploadedFile $file): array
+{
+    $extension = strtolower($file->getClientOriginalExtension());
+    $path = $file->getRealPath() ?: $file->path();
+    $text = match ($extension) {
+        'docx' => extractExamQuestionTextFromDocx($path),
+        'pdf' => extractExamQuestionTextFromPdf($path),
+        default => file_exists($path) ? (string) file_get_contents($path) : '',
+    };
+
+    return extractExamQuestionsFromText($text);
 }
 
 function syncExamQuestions(Exam $exam, array $questions): void
@@ -628,13 +721,20 @@ Route::middleware('auth')->group(function () {
                 'status' => ['required', 'in:open,closed'],
                 'questions' => ['nullable', 'array', 'max:5'],
                 'questions.*' => ['nullable', 'string', 'max:1000'],
+                'question_file' => ['nullable', 'file', 'mimes:txt,md,csv,pdf,docx'],
             ]);
 
-            $questionTexts = array_values(array_filter($validated['questions'] ?? [], fn ($question) => is_string($question) && trim($question) !== ''));
+            $questionTexts = [];
+
+            if ($request->hasFile('question_file')) {
+                $questionTexts = extractExamQuestionsFromUpload($request->file('question_file'));
+            } else {
+                $questionTexts = array_values(array_filter($validated['questions'] ?? [], fn ($question) => is_string($question) && trim($question) !== ''));
+            }
 
             if ($validated['exam_mode'] === 'online' && count($questionTexts) === 0) {
                 return back()
-                    ->withErrors(['questions' => 'Online exams need at least one question.'])
+                    ->withErrors(['questions' => 'Online exams need at least one question. Upload a question file or enter the questions manually.'])
                     ->withInput();
             }
 
