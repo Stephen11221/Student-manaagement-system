@@ -20,6 +20,7 @@
 <body>
     @php
         $existingAnswers = old('answers', $submission?->answers_json ?? []);
+        $submissionLocked = (bool) $submission;
     @endphp
     <div class="container">
         <header>
@@ -55,56 +56,68 @@
                 </div>
             @endif
 
-            <form method="POST" action="{{ route('student.exams.store', $exam->id) }}" enctype="multipart/form-data">
-                @csrf
-                @if($errors->any())
-                    <div class="error-message">
-                        <strong><i class="fa-solid fa-triangle-exclamation"></i> Please fix the errors:</strong>
-                        <ul style="margin-top:8px; margin-left:20px;">
-                            @foreach($errors->all() as $error)
-                                <li>{{ $error }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
-                @endif
-
-                @if($exam->isOnline())
-                    <div class="summary">
-                        <strong><i class="fa-solid fa-circle-info"></i> Answer all questions below</strong>
-                        <div style="margin-top:8px;color:#cbd5e1;">This online exam contains {{ $exam->questions->count() }} question{{ $exam->questions->count() === 1 ? '' : 's' }}.</div>
-                    </div>
-
-                    @forelse($exam->questions as $question)
-                        <div style="margin-bottom:18px;">
-                            <label style="display:block;margin-bottom:8px;color:#dbeafe;font-weight:700;">Question {{ $loop->iteration }}</label>
-                            <div class="info" style="margin-bottom:10px;">
-                                <div style="margin:0;color:#f8fafc;">{{ $question->question_text }}</div>
-                            </div>
-                            <textarea class="textarea" name="answers[{{ $question->id }}]" required>{{ $existingAnswers[$question->id] ?? '' }}</textarea>
-                        </div>
-                    @empty
-                        <div class="error-message">
-                            <strong><i class="fa-solid fa-triangle-exclamation"></i> No questions have been added yet.</strong>
-                            <div style="margin-top:8px;">Please check back once your trainer publishes the online questions.</div>
-                        </div>
-                    @endforelse
-                @elseif($exam->submission_type === 'written')
-                    <label style="display:block;margin-bottom:8px;color:#dbeafe;font-weight:700;">Type your exam answer</label>
-                    <textarea class="textarea" name="content" required>{{ old('content', $submission?->content) }}</textarea>
-                @else
-                    <label style="display:block;margin-bottom:8px;color:#dbeafe;font-weight:700;">Upload your exam file</label>
-                    <input type="file" name="file" {{ $submission?->file_path ? '' : 'required' }}>
-                    <div class="hint">Max {{ number_format(submissionUploadMaxKilobytes() / 1024, 0) }}MB.</div>
-                    @error('file')
-                        <div style="color:#ef4444;font-size:.85rem;margin-top:8px;">{{ $message }}</div>
-                    @enderror
-                @endif
-
-                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:24px;">
-                    <button type="submit" class="btn primary"><i class="fa-solid fa-circle-check"></i> {{ $submission ? 'Update Submission' : 'Submit Exam' }}</button>
-                    <a href="{{ route('student.exams.index') }}" class="btn secondary"><i class="fa-solid fa-arrow-left"></i> Cancel</a>
+            @if (session('error'))
+                <div class="error-message">
+                    <strong><i class="fa-solid fa-triangle-exclamation"></i> {{ session('error') }}</strong>
                 </div>
-            </form>
+            @endif
+            @unless($submissionLocked)
+                <form method="POST" action="{{ route('student.exams.store', $exam->id) }}" enctype="multipart/form-data">
+                    @csrf
+                    @if($errors->any())
+                        <div class="error-message">
+                            <strong><i class="fa-solid fa-triangle-exclamation"></i> Please fix the errors:</strong>
+                            <ul style="margin-top:8px; margin-left:20px;">
+                                @foreach($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
+
+                    @if($exam->isOnline())
+                        <div class="summary">
+                            <strong><i class="fa-solid fa-circle-info"></i> Answer all questions below</strong>
+                            <div style="margin-top:8px;color:#cbd5e1;">This online exam contains {{ $exam->questions->count() }} question{{ $exam->questions->count() === 1 ? '' : 's' }}.</div>
+                        </div>
+
+                        @forelse($exam->questions as $question)
+                            <div style="margin-bottom:18px;">
+                                <label style="display:block;margin-bottom:8px;color:#dbeafe;font-weight:700;">Question {{ $loop->iteration }}</label>
+                                <div class="info" style="margin-bottom:10px;">
+                                    <div style="margin:0;color:#f8fafc;">{{ $question->question_text }}</div>
+                                </div>
+                                <textarea class="textarea" name="answers[{{ $question->id }}]" required>{{ $existingAnswers[$question->id] ?? '' }}</textarea>
+                            </div>
+                        @empty
+                            <div class="error-message">
+                                <strong><i class="fa-solid fa-triangle-exclamation"></i> No questions have been added yet.</strong>
+                                <div style="margin-top:8px;">Please check back once your trainer publishes the online questions.</div>
+                            </div>
+                        @endforelse
+                    @elseif($exam->submission_type === 'written')
+                        <label style="display:block;margin-bottom:8px;color:#dbeafe;font-weight:700;">Type your exam answer</label>
+                        <textarea class="textarea" name="content" required>{{ old('content', '') }}</textarea>
+                    @else
+                        <label style="display:block;margin-bottom:8px;color:#dbeafe;font-weight:700;">Upload your exam file</label>
+                        <input type="file" name="file" required>
+                        <div class="hint">Max {{ number_format(submissionUploadMaxKilobytes() / 1024, 0) }}MB.</div>
+                        @error('file')
+                            <div style="color:#ef4444;font-size:.85rem;margin-top:8px;">{{ $message }}</div>
+                        @enderror
+                    @endif
+
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:24px;">
+                        <button type="submit" class="btn primary"><i class="fa-solid fa-circle-check"></i> Submit Exam</button>
+                        <a href="{{ route('student.exams.index') }}" class="btn secondary"><i class="fa-solid fa-arrow-left"></i> Cancel</a>
+                    </div>
+                </form>
+            @else
+                <div class="summary" style="margin-top:0;">
+                    <strong><i class="fa-solid fa-lock"></i> Submission locked</strong>
+                    <div style="margin-top:8px;color:#cbd5e1;">You have already submitted this exam. Updates are not allowed.</div>
+                </div>
+            @endunless
         </div>
     </div>
 </body>
