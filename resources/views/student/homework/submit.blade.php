@@ -341,66 +341,78 @@
                     @endif
                 </div>
             @endif
-
-            <form method="POST" action="{{ route('student.homework.store', $homework->id) }}" enctype="multipart/form-data">
-                @csrf
-
-                @if ($errors->any())
-                    <div class="error-message">
-                        <strong><i class="fa-solid fa-triangle-exclamation"></i> Please fix the errors:</strong>
-                        <ul style="margin-top: 8px; margin-left: 20px;">
-                            @foreach ($errors->all() as $error)
-                                <li>{{ $error }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
-                @endif
-
-                @if ($homework->submission_type === 'written')
-                    <div class="form-section">
-                        <div class="section-title"><i class="fa-regular fa-pen-to-square"></i> Your Answer</div>
-                        <label for="content">Write your answer below:</label>
-                        <textarea 
-                            id="content"
-                            name="content" 
-                            placeholder="Enter your answer here. Be thorough and clear." 
-                            required
-                            rows="12"
-                        >{{ old('content', $submission?->content) }}</textarea>
-                        @error('content')
-                            <div style="color: #ef4444; font-size: 0.85rem; margin-top: 4px;">{{ $message }}</div>
-                        @enderror
-                    </div>
-                @else
-                    <div class="form-section">
-                        <div class="section-title"><i class="fa-solid fa-paperclip"></i> Upload File</div>
-                        <label>Select or drag and drop a file:</label>
-                        
-                        <div class="file-upload-box" id="dropZone">
-                            <div class="upload-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-                            <div class="upload-text">Click to browse or drag and drop</div>
-                            <div class="upload-hint">Supported: PDF, DOC, DOCX, XLS, XLSX, TXT, ZIP (Max {{ number_format(submissionUploadMaxKilobytes() / 1024, 0) }}MB)</div>
-                        </div>
-
-                        <input 
-                            type="file" 
-                            id="file-input" 
-                            name="file" 
-                            {{ $submission?->file_path ? '' : 'required' }}
-                        >
-
-                        <div class="file-list" id="fileList"></div>
-                        @error('file')
-                            <div style="color: #ef4444; font-size: 0.85rem; margin-top: 8px;">{{ $message }}</div>
-                        @enderror
-                    </div>
-                @endif
-
-                <div class="button-group">
-                    <button type="submit" class="btn-primary"><i class="fa-solid fa-circle-check"></i> {{ $submission ? 'Update Submission' : 'Submit Assignment' }}</button>
-                    <a href="{{ route('student.homework.index') }}" style="padding: 12px 24px; border-radius: 8px; background: rgba(148, 163, 184, 0.1); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); text-decoration: none; font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 8px;"><i class="fa-solid fa-arrow-left"></i> Cancel</a>
+            @if (session('error'))
+                <div class="error-message">
+                    <strong><i class="fa-solid fa-triangle-exclamation"></i> {{ session('error') }}</strong>
                 </div>
-            </form>
+            @endif
+
+            @unless($submission)
+                <form method="POST" action="{{ route('student.homework.store', $homework->id) }}" enctype="multipart/form-data">
+                    @csrf
+
+                    @if ($errors->any())
+                        <div class="error-message">
+                            <strong><i class="fa-solid fa-triangle-exclamation"></i> Please fix the errors:</strong>
+                            <ul style="margin-top: 8px; margin-left: 20px;">
+                                @foreach ($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
+
+                    @if ($homework->submission_type === 'written')
+                        <div class="form-section">
+                            <div class="section-title"><i class="fa-regular fa-pen-to-square"></i> Your Answer</div>
+                            <label for="content">Write your answer below:</label>
+                            <textarea
+                                id="content"
+                                name="content"
+                                placeholder="Enter your answer here. Be thorough and clear."
+                                required
+                                rows="12"
+                            >{{ old('content') }}</textarea>
+                            @error('content')
+                                <div style="color: #ef4444; font-size: 0.85rem; margin-top: 4px;">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    @else
+                        <div class="form-section">
+                            <div class="section-title"><i class="fa-solid fa-paperclip"></i> Upload File</div>
+                            <label>Select or drag and drop a file:</label>
+
+                            <div class="file-upload-box" id="dropZone">
+                                <div class="upload-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                                <div class="upload-text">Click to browse or drag and drop</div>
+                                <div class="upload-hint">Supported: PDF, DOC, DOCX, XLS, XLSX, TXT, ZIP (Max {{ number_format(submissionUploadMaxKilobytes() / 1024, 0) }}MB)</div>
+                            </div>
+
+                            <input
+                                type="file"
+                                id="file-input"
+                                name="file"
+                                required
+                            >
+
+                            <div class="file-list" id="fileList"></div>
+                            @error('file')
+                                <div style="color: #ef4444; font-size: 0.85rem; margin-top: 8px;">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    @endif
+
+                    <div class="button-group">
+                        <button type="submit" class="btn-primary"><i class="fa-solid fa-circle-check"></i> Submit Assignment</button>
+                        <a href="{{ route('student.homework.index') }}" style="padding: 12px 24px; border-radius: 8px; background: rgba(148, 163, 184, 0.1); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); text-decoration: none; font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 8px;"><i class="fa-solid fa-arrow-left"></i> Cancel</a>
+                    </div>
+                </form>
+            @else
+                <div class="submission-summary" style="margin-top:0;">
+                    <strong><i class="fa-solid fa-lock"></i> Submission locked</strong>
+                    <div style="margin-top:8px;color:#cbd5e1;">You have already submitted this homework. Updates are not allowed.</div>
+                </div>
+            @endunless
         </div>
     </div>
 

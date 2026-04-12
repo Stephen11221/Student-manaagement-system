@@ -871,8 +871,9 @@ Route::middleware('auth')->group(function () {
                 ->whereHas('class', fn ($query) => $query->where('trainer_id', Auth::id()))
                 ->findOrFail($id);
             $submissions = $exam->submissions()->with('student')->latest('submitted_at')->get();
+            $passMark = 50;
 
-            return view('trainer.exams.submissions', compact('exam', 'submissions'));
+            return view('trainer.exams.submissions', compact('exam', 'submissions', 'passMark'));
         })->name('trainer.exams.submissions');
 
         Route::post('/exams/{id}/grade', function ($id, Request $request) {
@@ -1033,7 +1034,15 @@ Route::middleware('auth')->group(function () {
                 ->findOrFail($id);
             abort_if($exam->status === 'closed', 403);
 
-            $submission = ExamSubmission::firstOrCreate([
+            $existingSubmission = ExamSubmission::where('exam_id', $id)
+                ->where('student_id', Auth::id())
+                ->first();
+
+            if ($existingSubmission) {
+                return back()->with('error', 'You have already submitted this exam. Updates are not allowed.');
+            }
+
+            $submission = new ExamSubmission([
                 'exam_id' => $id,
                 'student_id' => Auth::id(),
             ]);
@@ -1112,7 +1121,15 @@ Route::middleware('auth')->group(function () {
         Route::post('/homework/{id}/submit', function ($id, Request $request) {
             $class = studentCurrentClass(Auth::user());
             $homework = Homework::when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))->findOrFail($id);
-            $submission = HomeworkSubmission::firstOrCreate([
+            $existingSubmission = HomeworkSubmission::where('homework_id', $id)
+                ->where('student_id', Auth::id())
+                ->first();
+
+            if ($existingSubmission) {
+                return back()->with('error', 'You have already submitted this homework. Updates are not allowed.');
+            }
+
+            $submission = new HomeworkSubmission([
                 'homework_id' => $id,
                 'student_id' => Auth::id(),
             ]);
