@@ -21,6 +21,13 @@
         label { display:block; margin-bottom:8px; color:#dbeafe; font-weight:600; font-size:.95rem; }
         input { width:100%; padding:12px 14px; border:1px solid rgba(148,163,184,.2); border-radius:8px; background:rgba(2,6,23,.56); color:#f8fafc; font-family:inherit; font-size:.95rem; transition:.2s; }
         input:focus { outline:none; border-color:#22d3ee; background:rgba(2,6,23,.78); box-shadow:0 0 0 3px rgba(34,211,238,.1); }
+        .password-field { position:relative; }
+        .password-field input { padding-right:96px; }
+        .password-toggle {
+            position:absolute; right:10px; top:38px; border:1px solid rgba(148,163,184,.2);
+            background:rgba(2,6,23,.7); color:#dbeafe; border-radius:999px; padding:8px 12px;
+            font:inherit; font-size:.82rem; display:inline-flex; align-items:center; gap:8px; width:auto;
+        }
         .button-group { display:flex; gap:12px; margin-top:28px; padding-top:24px; border-top:1px solid rgba(148,163,184,.1); }
         .btn { flex:1; padding:12px 24px; border:none; border-radius:8px; cursor:pointer; font-weight:700; font-size:.95rem; transition:.2s; display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; }
         .btn-primary { background:linear-gradient(135deg,#22d3ee,#06b6d4); color:#082f49; }
@@ -86,21 +93,30 @@
 
                 <div class="form-section">
                     <div class="section-title"><i class="fa-solid fa-lock"></i> Change Password</div>
-                    <div class="form-group">
+                    <div class="form-group password-field">
                         <label for="current_password">Current Password</label>
                         <input type="password" id="current_password" name="current_password" placeholder="Leave blank to keep current password">
+                        <button type="button" class="password-toggle" data-password-toggle data-show-label="Show" data-hide-label="Hide" aria-label="Show current password" aria-pressed="false">
+                            <i class="fa-regular fa-eye"></i> <span data-password-label>Show</span>
+                        </button>
                         @error('current_password')<div class="error-text">{{ $message }}</div>@enderror
                         <div class="help-text"><i class="fa-solid fa-circle-info"></i> Required only when changing your password</div>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group password-field">
                         <label for="password">New Password</label>
                         <input type="password" id="password" name="password" placeholder="Leave blank to keep current password">
+                        <button type="button" class="password-toggle" data-password-toggle data-show-label="Show" data-hide-label="Hide" aria-label="Show new password" aria-pressed="false">
+                            <i class="fa-regular fa-eye"></i> <span data-password-label>Show</span>
+                        </button>
                         @error('password')<div class="error-text">{{ $message }}</div>@enderror
                         <div class="help-text"><i class="fa-solid fa-shield-halved"></i> Minimum 8 characters recommended</div>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group password-field">
                         <label for="password_confirmation">Confirm New Password</label>
                         <input type="password" id="password_confirmation" name="password_confirmation" placeholder="Confirm new password">
+                        <button type="button" class="password-toggle" data-password-toggle data-show-label="Show" data-hide-label="Hide" aria-label="Show password confirmation" aria-pressed="false">
+                            <i class="fa-regular fa-eye"></i> <span data-password-label>Show</span>
+                        </button>
                         @error('password_confirmation')<div class="error-text">{{ $message }}</div>@enderror
                     </div>
                 </div>
@@ -115,6 +131,7 @@
 
     @include('partials.idle-timeout-modal')
     <script src="{{ asset('js/idle-timeout.js') }}"></script>
+    <script src="{{ asset('js/password-toggle.js') }}"></script>
     <script>
         document.documentElement.dataset.idleTimeout = "{{ config('idle.idle_timeout', 15) }}";
         document.documentElement.dataset.warningTime = "{{ config('idle.warning_time', 1) }}";

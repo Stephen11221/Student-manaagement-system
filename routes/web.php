@@ -1,8 +1,11 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AttendanceController;
 use App\Models\Attendance;
+use App\Models\AuditLog;
 use App\Models\ClassRoom;
+use App\Models\FeePayment;
 use App\Models\Exam;
 use App\Models\ExamQuestion;
 use App\Models\ExamSubmission;
@@ -11,6 +14,7 @@ use App\Models\HomeworkSubmission;
 use App\Models\Notification;
 use App\Models\Timetable;
 use App\Models\User;
+use App\Services\DarajaService;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
@@ -80,6 +84,117 @@ function studentClassJoinLabel(ClassRoom $class): string
 {
     return $class->delivery_mode === 'online' ? 'Join Online Class' : 'Join Physical Class';
 }
+
+function accountantDashboardData(): array
+{
+    $students = User::where('role', 'student')
+        ->with(['currentClass', 'feePayments' => fn ($query) => $query->orderByDesc('paid_at')->orderByDesc('id')])
+        ->orderBy('name')
+        ->get();
+
+    $paymentQuery = FeePayment::with('student.currentClass')->orderByDesc('paid_at')->orderByDesc('id');
+    $recentPayments = (clone $paymentQuery)->limit(10)->get();
+    $cashReceived = (clone $paymentQuery)->where('payment_method', 'cash')->sum('amount_paid');
+    $pochiReceived = (clone $paymentQuery)->where('payment_method', 'pochi_la_biashara')->sum('amount_paid');
+    $bankReceived = (clone $paymentQuery)->where('payment_method', 'bank_transfer')->sum('amount_paid');
+
+    $totalDue = $students->sum(function (User $student) {
+        return $student->feePayments->sum('amount_due');
+    });
+
+    $totalPaid = $students->sum(function (User $student) {
+        return $student->feePayments->sum('amount_paid');
+    });
+
+    $outstandingBalance = max($totalDue - $totalPaid, 0);
+    $paidStudents = $students->filter(function (User $student) {
+        $due = (float) $student->feePayments->sum('amount_due');
+        $paid = (float) $student->feePayments->sum('amount_paid');
+
+        return $due > 0 && $paid >= $due;
+    })->count();
+
+    $partiallyPaidStudents = $students->filter(function (User $student) {
+        $due = (float) $student->feePayments->sum('amount_due');
+        $paid = (float) $student->feePayments->sum('amount_paid');
+
+        return $due > 0 && $paid > 0 && $paid < $due;
+    })->count();
+
+    $unpaidStudents = $students->filter(function (User $student) {
+        $due = (float) $student->feePayments->sum('amount_due');
+        $paid = (float) $student->feePayments->sum('amount_paid');
+
+        return $due <= 0 || $paid <= 0;
+    })->count();
+
+    $collectionRate = $totalDue > 0 ? round(($totalPaid / $totalDue) * 100, 1) : 0;
+
+    return compact(
+        'students',
+        'recentPayments',
+        'totalDue',
+        'totalPaid',
+        'outstandingBalance',
+        'paidStudents',
+        'partiallyPaidStudents',
+        'unpaidStudents',
+        'collectionRate'
+        ,
+        'cashReceived',
+        'pochiReceived',
+        'bankReceived'
+    );
+}
+
+Route::post('/daraja/mpesa/callback', function (Request $request) {
+    $callback = data_get($request->all(), 'Body.stkCallback', []);
+    $checkoutRequestId = data_get($callback, 'CheckoutRequestID');
+
+    if (! $checkoutRequestId) {
+        return response()->json(['message' => 'Missing CheckoutRequestID.']);
+    }
+
+    $payment = FeePayment::where('checkout_request_id', $checkoutRequestId)->first();
+
+    if (! $payment) {
+        return response()->json(['message' => 'Payment record not found.'], 404);
+    }
+
+    $items = collect(data_get($callback, 'CallbackMetadata.Item', []))
+        ->mapWithKeys(function ($item) {
+            return [data_get($item, 'Name') => data_get($item, 'Value')];
+        });
+
+    $resultCode = (string) data_get($callback, 'ResultCode', '1');
+    $resultDesc = data_get($callback, 'ResultDesc');
+    $merchantRequestId = data_get($callback, 'MerchantRequestID');
+    $amount = (float) ($items->get('Amount') ?? $payment->amount_paid);
+    $receiptNumber = $items->get('MpesaReceiptNumber');
+    $phoneNumber = $items->get('PhoneNumber');
+
+    $payment->fill([
+        'daraja_payload' => $request->all(),
+        'daraja_completed_at' => now(),
+        'daraja_response_code' => $resultCode,
+        'daraja_response_description' => $resultDesc,
+        'merchant_request_id' => $merchantRequestId ?: $payment->merchant_request_id,
+    ]);
+
+    if ($resultCode === '0') {
+        $payment->amount_paid = $amount;
+        $payment->payment_method = 'mpesa';
+        $payment->receipt_number = $receiptNumber ?: $payment->receipt_number;
+        $payment->transaction_id = $receiptNumber ?: $payment->transaction_id;
+        $payment->phone_number = $phoneNumber ?: $payment->phone_number;
+        $payment->paid_at = now();
+        $payment->status = $amount >= (float) $payment->amount_due ? 'paid' : ($amount > 0 ? 'partial' : 'unpaid');
+    }
+
+    $payment->save();
+
+    return response()->json(['message' => 'Callback received.']);
+})->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])->name('daraja.mpesa.callback');
 
 function normalizeImportHeader(string $header): string
 {
@@ -748,6 +863,12 @@ Route::middleware('auth')->group(function () {
             return view('dashboard.student', compact('classes', 'availableClasses'));
         }
 
+        if ($user->role === 'accountant') {
+            $dashboard = accountantDashboardData();
+
+            return view('dashboard.accountant', $dashboard);
+        }
+
         if (in_array($user->role, ['admin', 'department_admin'], true)) {
             $userQuery = User::query();
 
@@ -1241,35 +1362,41 @@ Route::middleware('auth')->group(function () {
         Route::post('/classes/{id}/attendance', function ($id, Request $request) {
             $class = Auth::user()->taughtClasses()->with('students')->findOrFail($id);
             $firstTimetable = $class->timetables()->first();
+            $attendanceDate = $request->validate([
+                'attendance_date' => ['nullable', 'date'],
+                'attendance' => ['required', 'array'],
+                'attendance.*' => ['required', 'in:present,absent,late,excused'],
+            ])['attendance_date'] ?? now()->toDateString();
 
             if (! $firstTimetable) {
                 return back()->with('error', 'Create at least one timetable slot before marking attendance.');
             }
 
-            $validated = $request->validate([
-                'attendance' => ['required', 'array'],
-                'attendance.*' => ['required', 'in:present,absent,late'],
-            ]);
-
             foreach ($class->students as $student) {
-                $status = $validated['attendance'][$student->id] ?? 'absent';
+                $status = $request->input("attendance.{$student->id}", 'absent');
 
                 Attendance::updateOrCreate(
                     [
+                        'attendance_date' => $attendanceDate,
+                        'scope_type' => 'class',
+                        'scope_id' => $class->id,
                         'class_id' => $class->id,
                         'student_id' => $student->id,
-                        'timetable_id' => $firstTimetable->id,
                     ],
                     [
+                        'department_id' => null,
+                        'timetable_id' => $firstTimetable->id,
                         'status' => $status,
                         'marked_at' => now(),
+                        'recorded_by' => Auth::id(),
+                        'source' => 'bulk',
                     ]
                 );
 
                 Notification::create([
                     'user_id' => $student->id,
                     'title' => 'Attendance Updated',
-                    'message' => "Your attendance for {$class->name} was marked as " . ucfirst($status) . '.',
+                    'message' => "Your attendance for {$class->name} on {$attendanceDate} was marked as " . ucfirst($status) . '.',
                     'type' => 'attendance',
                 ]);
             }
@@ -1619,20 +1746,22 @@ Route::middleware('auth')->group(function () {
         })->name('student.homework.store');
 
         Route::get('/attendance', function () {
-            $class = studentCurrentClass(Auth::user());
             $attendance = Auth::user()->attendanceRecords()
-                ->when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))
-                ->with('classRoom', 'timetable')
+                ->with(['classRoom', 'department', 'timetable', 'recordedBy'])
+                ->when(request()->filled('date'), fn ($query) => $query->whereDate('attendance_date', request('date')))
+                ->when(request()->filled('class_id'), fn ($query) => $query->where('class_id', request('class_id')))
+                ->when(request()->filled('department_id'), fn ($query) => $query->where('department_id', request('department_id')))
+                ->latest('attendance_date')
                 ->latest('marked_at')
                 ->get();
             $total = $attendance->count();
-            $attended = $attendance->whereIn('status', ['present', 'late'])->count();
-            $attendancePercentage = $total > 0 ? ($attended / $total) * 100 : 0;
             $presentCount = $attendance->where('status', 'present')->count();
             $lateCount = $attendance->where('status', 'late')->count();
+            $excusedCount = $attendance->where('status', 'excused')->count();
             $absentCount = $attendance->where('status', 'absent')->count();
+            $attendancePercentage = $total > 0 ? (($presentCount + $lateCount + $excusedCount) / $total) * 100 : 0;
 
-            return view('student.attendance.index', compact('attendance', 'attendancePercentage', 'presentCount', 'lateCount', 'absentCount'));
+            return view('student.attendance.index', compact('attendance', 'attendancePercentage', 'presentCount', 'lateCount', 'excusedCount', 'absentCount'));
         })->name('student.attendance.index');
     });
 
@@ -1646,6 +1775,82 @@ Route::middleware('auth')->group(function () {
         })->name('career-coach.students.show');
     });
 
+    Route::middleware('auth')->prefix('attendance')->group(function () {
+        Route::post('/check-in', [AttendanceController::class, 'checkIn'])->name('attendance.check-in');
+        Route::post('/check-out', [AttendanceController::class, 'checkOut'])->name('attendance.check-out');
+    });
+
+    Route::middleware('role:accountant')->prefix('accountant')->group(function () {
+        Route::get('/', function () {
+            return view('dashboard.accountant', accountantDashboardData());
+        })->name('accountant.dashboard');
+
+        Route::get('/payments/{payment}/edit', function (FeePayment $payment) {
+            $students = User::where('role', 'student')->orderBy('name')->get();
+
+            return view('accountant.payments.edit', compact('payment', 'students'));
+        })->name('accountant.payments.edit');
+
+        Route::put('/payments/{payment}', function (FeePayment $payment, Request $request) {
+            $validated = $request->validate([
+                'student_id' => ['required', 'exists:users,id'],
+                'academic_year' => ['nullable', 'string', 'max:255'],
+                'term' => ['nullable', 'string', 'max:255'],
+                'amount_due' => ['required', 'numeric', 'min:0'],
+                'amount_paid' => ['required', 'numeric', 'min:0'],
+                'payment_method' => ['required', 'in:cash,mpesa,pochi_la_biashara,bank_transfer,card,other'],
+                'phone_number' => ['nullable', 'string', 'max:255'],
+                'receipt_number' => ['nullable', 'string', 'max:255', 'unique:fee_payments,receipt_number,' . $payment->id],
+                'paid_at' => ['nullable', 'date'],
+                'status' => ['required', 'in:paid,partial,unpaid'],
+                'notes' => ['nullable', 'string'],
+            ]);
+
+            $student = User::where('role', 'student')->findOrFail($validated['student_id']);
+
+            $payment->update([
+                ...$validated,
+                'student_id' => $student->id,
+                'paid_at' => $validated['paid_at'] ?? ($validated['status'] === 'unpaid' ? null : ($payment->paid_at ?? now())),
+            ]);
+
+            AuditLog::log('update', 'FeePayment', $payment->id, $validated, "Updated fee payment for {$student->name}");
+
+            return redirect()->route('accountant.dashboard')->with('status', 'Fee payment updated successfully.');
+        })->name('accountant.payments.update');
+
+        Route::post('/payments/{payment}/daraja/stk-push', function (FeePayment $payment, Request $request, DarajaService $darajaService) {
+            $validated = $request->validate([
+                'phone_number' => ['required', 'string', 'max:255'],
+                'amount' => ['nullable', 'numeric', 'min:1'],
+            ]);
+
+            $response = $darajaService->initiateStkPush(
+                $payment,
+                $validated['phone_number'],
+                $validated['amount'] ?? null,
+                $payment->receipt_number ?: 'FEE-' . $payment->id,
+                'School fee payment'
+            );
+
+            $payment->fill([
+                'payment_method' => 'mpesa',
+                'phone_number' => $validated['phone_number'],
+                'checkout_request_id' => data_get($response, 'CheckoutRequestID'),
+                'merchant_request_id' => data_get($response, 'MerchantRequestID'),
+                'daraja_response_code' => (string) data_get($response, 'ResponseCode'),
+                'daraja_response_description' => data_get($response, 'ResponseDescription'),
+                'daraja_payload' => $response,
+                'daraja_requested_at' => now(),
+            ]);
+            $payment->save();
+
+            AuditLog::log('update', 'FeePayment', $payment->id, ['daraja' => $response], "Sent Daraja STK push for fee payment #{$payment->id}");
+
+            return back()->with('status', 'Daraja STK push sent successfully.');
+        })->name('accountant.payments.daraja.push');
+    });
+
     Route::middleware('role:admin,department_admin')->prefix('admin')->group(function () {
         Route::get('/users', function () {
             $viewer = Auth::user();
@@ -1655,7 +1860,7 @@ Route::middleware('auth')->group(function () {
                 $userQuery->where('department', $viewer->department);
             }
 
-            $users = $userQuery->with(['careerCoach', 'currentClass'])->paginate(15);
+            $users = $userQuery->with(['careerCoach', 'currentClass'])->orderBy('role')->orderBy('name')->paginate(15);
             $totalUsers = (clone $userQuery)->count();
             $students = (clone $userQuery)->where('role', 'student')->count();
             $trainers = (clone $userQuery)->where('role', 'trainer')->count();
@@ -1676,7 +1881,7 @@ Route::middleware('auth')->group(function () {
                 'name' => ['required', 'string', 'max:255'],
                 'email' => ['required', 'email', 'unique:users'],
                 'password' => ['required', 'string', 'min:8'],
-                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach'],
+                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant'],
                 'department' => ['nullable', 'string', 'max:255'],
                 'career_coach_id' => ['nullable', 'exists:users,id'],
                 'date_of_birth' => ['nullable', 'date'],
@@ -1975,7 +2180,7 @@ Route::middleware('auth')->group(function () {
             $validated = $request->validate([
                 'name' => ['required', 'string', 'max:255'],
                 'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $user->id],
-                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach'],
+                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant'],
                 'department' => ['nullable', 'string', 'max:255'],
                 'career_coach_id' => ['nullable', 'exists:users,id'],
                 'date_of_birth' => ['nullable', 'date'],
@@ -2024,6 +2229,14 @@ Route::middleware('auth')->group(function () {
                 deleteUserStudentDocuments($user);
                 $validated['birth_certificate_path'] = null;
                 $validated['report_form_path'] = null;
+                $validated['career_coach_id'] = null;
+                $validated['current_class_id'] = null;
+                $validated['stream'] = null;
+                $validated['student_status'] = null;
+                $validated['admission_date'] = null;
+                $validated['exit_date'] = null;
+                $validated['transfer_notes'] = null;
+                $validated['admission_number'] = null;
             }
 
             if ($validated['role'] === 'student' && $request->hasFile('birth_certificate')) {
@@ -2049,6 +2262,40 @@ Route::middleware('auth')->group(function () {
             return redirect()->route('admin.users.index')->with('status', 'User updated successfully.');
         })->name('admin.users.update');
 
+        Route::post('/users/{id}/role', function ($id, Request $request) {
+            $user = User::withTrashed()->findOrFail($id);
+            $validated = $request->validate([
+                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant'],
+            ]);
+
+            $previousRole = $user->role;
+            $user->role = $validated['role'];
+
+            if ($validated['role'] !== 'student') {
+                deleteUserStudentDocuments($user);
+                $user->career_coach_id = null;
+                $user->current_class_id = null;
+                $user->stream = null;
+                $user->student_status = null;
+                $user->admission_date = null;
+                $user->exit_date = null;
+                $user->transfer_notes = null;
+                $user->admission_number = null;
+                $user->birth_certificate_path = null;
+                $user->report_form_path = null;
+                $user->enrolledClasses()->detach();
+            } elseif (! $user->admission_number) {
+                $user->admission_number = generateAdmissionNumber();
+            }
+
+            $user->save();
+            syncStudentEnrollment($user);
+
+            AuditLog::log('update', 'User', $user->id, ['role' => ['from' => $previousRole, 'to' => $user->role]], "Changed role for {$user->name} from {$previousRole} to {$user->role}");
+
+            return redirect()->route('admin.users.index')->with('status', 'User role updated successfully.');
+        })->name('admin.users.role');
+
         Route::post('/users/{id}/suspend', function ($id) {
             $user = User::findOrFail($id);
             $user->delete();
@@ -2071,6 +2318,12 @@ Route::middleware('auth')->group(function () {
 
             return redirect()->route('admin.users.index')->with('status', 'User permanently deleted.');
         })->name('admin.users.delete');
+
+        Route::get('/attendance', [AttendanceController::class, 'dashboard'])->name('admin.attendance.index');
+        Route::get('/attendance/report', [AttendanceController::class, 'report'])->name('admin.attendance.report');
+        Route::get('/attendance/export.csv', [AttendanceController::class, 'csv'])->name('admin.attendance.export.csv');
+        Route::post('/attendance/bulk', [AttendanceController::class, 'bulkStore'])->name('admin.attendance.bulk');
+        Route::get('/attendance/classes/{class}', [AttendanceController::class, 'manageClass'])->name('admin.attendance.class');
 
         Route::get('/classes', function () {
             $classes = ClassRoom::with(['trainer', 'students', 'homeworks'])->get();

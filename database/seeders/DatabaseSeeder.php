@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\User;
+use App\Models\FeePayment;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -37,8 +38,26 @@ class DatabaseSeeder extends Seeder
                 'department' => 'Student Success',
             ],
             [
+                'name' => 'Accountant User',
+                'email' => 'accountant@example.com',
+                'role' => 'accountant',
+                'department' => 'Finance',
+            ],
+            [
                 'name' => 'Test User',
                 'email' => 'test@example.com',
+                'role' => 'student',
+                'department' => 'General Studies',
+            ],
+            [
+                'name' => 'Partial Student',
+                'email' => 'partial.student@example.com',
+                'role' => 'student',
+                'department' => 'General Studies',
+            ],
+            [
+                'name' => 'Unpaid Student',
+                'email' => 'unpaid.student@example.com',
                 'role' => 'student',
                 'department' => 'General Studies',
             ],
@@ -61,6 +80,46 @@ class DatabaseSeeder extends Seeder
 
         if ($student && $coach && ! $student->career_coach_id) {
             $student->update(['career_coach_id' => $coach->id]);
+        }
+
+        if ($student) {
+            FeePayment::query()->firstOrCreate(
+                [
+                    'student_id' => $student->id,
+                    'academic_year' => now()->year . '/' . (now()->year + 1),
+                    'term' => 'Term 1',
+                    'receipt_number' => 'RCPT-2026-0001',
+                ],
+                [
+                    'amount_due' => 50000,
+                    'amount_paid' => 50000,
+                    'payment_method' => 'cash',
+                    'paid_at' => now(),
+                    'status' => 'paid',
+                    'notes' => 'Sample full payment for accountant dashboard preview.',
+                ]
+            );
+        }
+
+        $partialStudent = User::where('email', 'partial.student@example.com')->first();
+
+        if ($partialStudent) {
+            FeePayment::query()->firstOrCreate(
+                [
+                    'student_id' => $partialStudent->id,
+                    'academic_year' => now()->year . '/' . (now()->year + 1),
+                    'term' => 'Term 1',
+                    'receipt_number' => 'RCPT-2026-0002',
+                ],
+                [
+                    'amount_due' => 50000,
+                    'amount_paid' => 20000,
+                    'payment_method' => 'bank transfer',
+                    'paid_at' => now()->subDays(2),
+                    'status' => 'partial',
+                    'notes' => 'Sample partial payment for accountant dashboard preview.',
+                ]
+            );
         }
     }
 }

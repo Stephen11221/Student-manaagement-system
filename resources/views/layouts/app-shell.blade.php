@@ -7,33 +7,20 @@
         <title>@yield('title', config('app.name', 'School Portal'))</title>
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600,700" rel="stylesheet" />
-        <script src="https://cdn.tailwindcss.com"></script>
-        <script>
-            tailwind.config = {
-                darkMode: 'class',
-            };
-        </script>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         @vite(['resources/css/app.css', 'resources/js/app.js'])
-        <style>
-            html, body {
-                min-height: 100%;
-            }
-
-            body {
-                font-family: "Instrument Sans", sans-serif;
-                background:
-                    radial-gradient(circle at top left, rgba(34, 211, 238, 0.12), transparent 24%),
-                    radial-gradient(circle at bottom right, rgba(239, 68, 68, 0.1), transparent 22%),
-                    linear-gradient(135deg, #020617 0%, #0f172a 54%, #111827 100%);
-            }
-        </style>
+        @stack('styles')
     </head>
-    <body class="text-slate-100">
-        @yield('content')
+    <body data-sidebar-collapsed="false" data-sidebar-open="false">
+        <div class="app-shell">
+            @include('partials.role-sidebar', ['role' => $sidebarRole ?? 'student', 'classId' => $sidebarClassId ?? null])
+
+            <main class="app-main">
+                @yield('content')
+            </main>
+        </div>
 
         @include('partials.chat-fab')
-        @include('partials.chat-panel')
         @include('partials.idle-timeout-modal')
 
         <script src="{{ asset('js/idle-timeout.js') }}"></script>

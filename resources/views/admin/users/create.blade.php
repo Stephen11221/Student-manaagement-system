@@ -14,6 +14,7 @@
         .form-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.full-width{grid-column:1/-1}
         label{display:block;margin-bottom:8px;color:#dbeafe;font-weight:600}input,select,textarea{width:100%;padding:12px;border:1px solid rgba(148,163,184,.2);border-radius:8px;background:rgba(2,6,23,.56);color:#f8fafc;font-family:inherit;box-sizing:border-box}
         textarea{resize:vertical;min-height:96px}button{background:linear-gradient(135deg,#22d3ee,#06b6d4);color:#082f49;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-weight:700;width:100%;margin-top:20px}
+        .password-field{position:relative}.password-field input{padding-right:96px}.password-toggle{position:absolute;right:10px;top:38px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.7);color:#dbeafe;border-radius:999px;padding:8px 12px;font:inherit;font-size:.82rem;display:inline-flex;align-items:center;gap:8px;width:auto;margin-top:0}
         .back-link{color:#22d3ee;text-decoration:none;font-weight:600;margin-top:16px;display:inline-flex;align-items:center;gap:8px}.hint{color:#94a3b8;font-size:.85rem;margin-top:6px}
         .student-only{display:none}.error-box{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.32);border-radius:12px;padding:14px 16px;margin-bottom:18px;color:#fecaca}
         .error-list{margin-top:10px;padding-left:18px}.field-error{color:#fca5a5;font-size:.85rem;margin-top:6px}
@@ -91,9 +92,12 @@
                 <div class="form-section">
                     <h3><i class="fas fa-lock"></i> Account Details</h3>
                     <div class="form-group">
-                        <div>
+                        <div class="password-field">
                             <label>Password</label>
                             <input type="password" name="password" required placeholder="Min 8 characters">
+                            <button type="button" class="password-toggle" data-password-toggle data-show-label="Show" data-hide-label="Hide" aria-label="Show password" aria-pressed="false">
+                                <i class="fa-regular fa-eye"></i> <span data-password-label>Show</span>
+                            </button>
                         </div>
                         <div>
                             <label>Role</label>
@@ -104,6 +108,7 @@
                                 <option value="admin" @selected(old('role') === 'admin')>Admin</option>
                                 <option value="department_admin" @selected(old('role') === 'department_admin')>Department Admin</option>
                                 <option value="career_coach" @selected(old('role') === 'career_coach')>Career Coach</option>
+                                <option value="accountant" @selected(old('role') === 'accountant')>Accountant</option>
                             </select>
                         </div>
                     </div>
@@ -223,9 +228,12 @@
                                 <div class="field-error">{{ $message }}</div>
                             @enderror
                         </div>
-                        <div>
+                        <div class="password-field">
                             <label>Default Password</label>
                             <input type="password" name="student_import_password" required placeholder="Temporary password for imported students">
+                            <button type="button" class="password-toggle" data-password-toggle data-show-label="Show" data-hide-label="Hide" aria-label="Show temporary password" aria-pressed="false">
+                                <i class="fa-regular fa-eye"></i> <span data-password-label>Show</span>
+                            </button>
                             <div class="hint">Used when the file row does not include a password.</div>
                             @error('student_import_password')
                                 <div class="field-error">{{ $message }}</div>
@@ -291,5 +299,6 @@
         roleSelect.addEventListener('change', syncStudentFields);
         syncStudentFields();
     </script>
+    <script src="{{ asset('js/password-toggle.js') }}"></script>
 </body>
 </html>

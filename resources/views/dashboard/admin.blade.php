@@ -62,6 +62,7 @@
                 <div class="quick-link"><i class="fa-solid fa-user-plus fa-2x"></i><h3>Add new user</h3><p>Create accounts for students, trainers, admins, and career coaches.</p><a href="{{ route('admin.users.create') }}"><i class="fa-solid fa-plus"></i> Create account</a></div>
                 <div class="quick-link"><i class="fa-solid fa-school fa-2x"></i><h3>View classes</h3><p>Review all classes, trainers, student counts, and homework coverage.</p><a href="{{ route('admin.classes.index') }}"><i class="fa-solid fa-eye"></i> Open classes</a></div>
                 <div class="quick-link"><i class="fa-solid fa-book-open-reader fa-2x"></i><h3>Manage homework</h3><p>Create and update assignments centrally across the school portal.</p><a href="{{ route('admin.homework.index') }}"><i class="fa-solid fa-list-check"></i> Open homework</a></div>
+                <div class="quick-link"><i class="fa-solid fa-clipboard-check fa-2x"></i><h3>Attendance hub</h3><p>Monitor daily attendance, manage bulk entry, and export reports.</p><a href="{{ route('admin.attendance.index') }}"><i class="fa-solid fa-arrow-right"></i> Open attendance</a></div>
             </div>
 
             <div class="section-title"><i class="fa-solid fa-gears"></i> Settings and Features</div>

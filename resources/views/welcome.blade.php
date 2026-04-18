@@ -194,6 +194,33 @@
                 transition: border-color 0.2s ease, transform 0.2s ease;
             }
 
+            .password-field {
+                position: relative;
+            }
+
+            .password-field input {
+                padding-right: 96px;
+            }
+
+            .password-toggle {
+                position: absolute;
+                right: 12px;
+                top: 50%;
+                transform: translateY(-50%);
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                background: rgba(2, 6, 23, 0.7);
+                color: #dbeafe;
+                border-radius: 999px;
+                padding: 8px 12px;
+                font: inherit;
+                font-size: 0.84rem;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                width: auto;
+                margin-top: 0;
+            }
+
             input[type="email"]:focus,
             input[type="password"]:focus {
                 border-color: rgba(34, 211, 238, 0.65);
@@ -377,7 +404,7 @@
                                 >
                             </div>
 
-                            <div class="field">
+                            <div class="field password-field">
                                 <label for="password">Password</label>
                                 <input
                                     id="password"
@@ -386,6 +413,9 @@
                                     placeholder="Enter your password"
                                     required
                                 >
+                                <button type="button" class="password-toggle" data-password-toggle data-show-label="Show" data-hide-label="Hide" aria-label="Show password" aria-pressed="false">
+                                    <span data-password-label>Show</span>
+                                </button>
                             </div>
 
                             <div class="actions">
@@ -410,5 +440,6 @@
                 </section>
             </div>
         </main>
+        <script src="{{ asset('js/password-toggle.js') }}"></script>
     </body>
 </html>

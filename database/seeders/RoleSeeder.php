@@ -42,5 +42,11 @@ class RoleSeeder extends Seeder
             'slug' => 'career_coach',
             'description' => 'Career Coach - can guide students on career paths',
         ]);
+
+        Role::create([
+            'name' => 'Accountant',
+            'slug' => 'accountant',
+            'description' => 'Accountant role - can review fees, payments, and financial summaries',
+        ]);
     }
 }

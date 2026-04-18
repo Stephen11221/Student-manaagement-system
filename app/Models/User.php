@@ -163,6 +163,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Fee payment records for this student.
+     */
+    public function feePayments()
+    {
+        return $this->hasMany(FeePayment::class, 'student_id');
+    }
+
+    /**
      * Check if user has a specific role
      */
     public function hasRole($role): bool
@@ -208,6 +216,14 @@ class User extends Authenticatable
     public function isCareerCoach(): bool
     {
         return $this->role === 'career_coach';
+    }
+
+    /**
+     * Check if user is an accountant.
+     */
+    public function isAccountant(): bool
+    {
+        return $this->role === 'accountant';
     }
 
     /**
@@ -323,4 +339,3 @@ class User extends Authenticatable
         AuditLog::log('activate', 'User', $this->id);
     }
 }
-
