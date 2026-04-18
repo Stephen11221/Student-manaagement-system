@@ -64,6 +64,7 @@
             'trainer' => ['label' => 'Trainers', 'icon' => 'fa-chalkboard-user'],
             'career_coach' => ['label' => 'Career Coaches', 'icon' => 'fa-briefcase'],
             'accountant' => ['label' => 'Accountants', 'icon' => 'fa-calculator'],
+            'manager' => ['label' => 'Managers', 'icon' => 'fa-briefcase'],
             'department_admin' => ['label' => 'Department Admins', 'icon' => 'fa-building-user'],
             'admin' => ['label' => 'Admins', 'icon' => 'fa-shield-halved'],
             'other' => ['label' => 'Other Users', 'icon' => 'fa-user-group'],
@@ -111,6 +112,10 @@
                 <div class="stat-num">{{ $admins }}</div>
                 <div class="stat-label"><i class="fas fa-shield-alt"></i> Admins</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-num">{{ $managers ?? 0 }}</div>
+                <div class="stat-label"><i class="fas fa-briefcase"></i> Managers</div>
+            </div>
         </div>
 
         <div class="filter-bar">
@@ -123,6 +128,7 @@
                 <option value="department_admin">Department Admin</option>
                 <option value="career_coach">Career Coach</option>
                 <option value="accountant">Accountant</option>
+                <option value="manager">Manager</option>
             </select>
             <button onclick="filterTable()"><i class="fas fa-filter"></i> Filter</button>
         </div>

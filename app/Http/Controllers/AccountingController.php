@@ -71,10 +71,15 @@ class AccountingController extends Controller
             return back()->withErrors(['code' => 'System accounts cannot be edited.']);
         }
 
-        $account->update([
-            ...$validated,
-            'is_active' => $request->boolean('is_active'),
-        ]);
+        $updateData = $validated;
+
+        if ($request->has('is_active')) {
+            $updateData['is_active'] = $request->boolean('is_active');
+        } else {
+            unset($updateData['is_active']);
+        }
+
+        $account->update($updateData);
 
         return back()->with('status', 'Account updated successfully.');
     }
@@ -124,6 +129,10 @@ class AccountingController extends Controller
 
     public function updateJournal(Request $request, AccountingJournal $journal, AccountingService $service)
     {
+        if ($journal->source_type) {
+            return back()->withErrors(['journal' => 'Source-linked journals must be updated from the originating invoice or payment.']);
+        }
+
         $validated = $this->validateJournalRequest($request);
         $attachmentPath = $this->storeAttachment($request, 'attachment');
 
@@ -143,6 +152,10 @@ class AccountingController extends Controller
 
     public function destroyJournal(AccountingJournal $journal, AccountingService $service)
     {
+        if ($journal->source_type) {
+            return back()->withErrors(['journal' => 'Source-linked journals must be deleted from the originating invoice or payment.']);
+        }
+
         $service->deleteJournal($journal);
 
         return back()->with('status', 'Transaction deleted successfully.');
@@ -220,6 +233,7 @@ class AccountingController extends Controller
             'paid_at' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
             'account_id' => ['nullable', 'exists:chart_accounts,id'],
+            'attachment' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,doc,docx'],
         ]);
 
         $attachmentPath = $this->storeAttachment($request, 'attachment');
@@ -339,6 +353,7 @@ class AccountingController extends Controller
             'entry_date' => ['required', 'date'],
             'reference' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
+            'attachment' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,doc,docx'],
             'lines' => ['required', 'array', 'min:2'],
             'lines.*.account_id' => ['required', 'exists:chart_accounts,id'],
             'lines.*.description' => ['nullable', 'string'],
@@ -377,6 +392,7 @@ class AccountingController extends Controller
             'status' => ['nullable', 'in:draft,sent,partial,paid,overdue,cancelled'],
             'tax_amount' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string'],
+            'attachment' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,doc,docx'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.account_id' => ['nullable', 'exists:chart_accounts,id'],

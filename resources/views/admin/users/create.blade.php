@@ -109,6 +109,7 @@
                                 <option value="department_admin" @selected(old('role') === 'department_admin')>Department Admin</option>
                                 <option value="career_coach" @selected(old('role') === 'career_coach')>Career Coach</option>
                                 <option value="accountant" @selected(old('role') === 'accountant')>Accountant</option>
+                                <option value="manager" @selected(old('role') === 'manager')>Manager</option>
                             </select>
                         </div>
                     </div>

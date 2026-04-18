@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AccountingController;
 use App\Http\Controllers\AttendanceController;
 use App\Models\Attendance;
 use App\Models\AuditLog;
@@ -14,6 +15,7 @@ use App\Models\HomeworkSubmission;
 use App\Models\Notification;
 use App\Models\Timetable;
 use App\Models\User;
+use App\Services\AccountingService;
 use App\Services\DarajaService;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -867,6 +869,12 @@ Route::middleware('auth')->group(function () {
             $dashboard = accountantDashboardData();
 
             return view('dashboard.accountant', $dashboard);
+        }
+
+        if ($user->role === 'manager') {
+            $dashboard = app(AccountingService::class)->dashboardMetrics();
+
+            return view('accounting.dashboard', $dashboard);
         }
 
         if (in_array($user->role, ['admin', 'department_admin'], true)) {
@@ -1851,6 +1859,27 @@ Route::middleware('auth')->group(function () {
         })->name('accountant.payments.daraja.push');
     });
 
+    Route::middleware('role:admin,accountant,manager')->prefix('accounting')->group(function () {
+        Route::get('/', [AccountingController::class, 'dashboard'])->name('accounting.dashboard');
+        Route::get('/accounts', [AccountingController::class, 'accounts'])->name('accounting.accounts.index');
+        Route::post('/accounts', [AccountingController::class, 'storeAccount'])->name('accounting.accounts.store');
+        Route::put('/accounts/{account}', [AccountingController::class, 'updateAccount'])->name('accounting.accounts.update');
+        Route::delete('/accounts/{account}', [AccountingController::class, 'destroyAccount'])->name('accounting.accounts.destroy');
+
+        Route::get('/transactions', [AccountingController::class, 'transactions'])->name('accounting.transactions.index');
+        Route::post('/transactions', [AccountingController::class, 'storeJournal'])->name('accounting.transactions.store');
+        Route::put('/transactions/{journal}', [AccountingController::class, 'updateJournal'])->name('accounting.transactions.update');
+        Route::delete('/transactions/{journal}', [AccountingController::class, 'destroyJournal'])->name('accounting.transactions.destroy');
+
+        Route::get('/invoices', [AccountingController::class, 'invoices'])->name('accounting.invoices.index');
+        Route::post('/invoices', [AccountingController::class, 'storeInvoice'])->name('accounting.invoices.store');
+        Route::put('/invoices/{invoice}', [AccountingController::class, 'updateInvoice'])->name('accounting.invoices.update');
+        Route::post('/invoices/{invoice}/payments', [AccountingController::class, 'recordPayment'])->name('accounting.invoices.payments.store');
+
+        Route::get('/reports', [AccountingController::class, 'reports'])->name('accounting.reports.index');
+        Route::get('/reports/export/{type}', [AccountingController::class, 'export'])->name('accounting.reports.export');
+    });
+
     Route::middleware('role:admin,department_admin')->prefix('admin')->group(function () {
         Route::get('/users', function () {
             $viewer = Auth::user();
@@ -1865,8 +1894,9 @@ Route::middleware('auth')->group(function () {
             $students = (clone $userQuery)->where('role', 'student')->count();
             $trainers = (clone $userQuery)->where('role', 'trainer')->count();
             $admins = (clone $userQuery)->whereIn('role', ['admin', 'department_admin'])->count();
+            $managers = (clone $userQuery)->where('role', 'manager')->count();
 
-            return view('admin.users.index', compact('users', 'totalUsers', 'students', 'trainers', 'admins'));
+            return view('admin.users.index', compact('users', 'totalUsers', 'students', 'trainers', 'admins', 'managers'));
         })->name('admin.users.index');
 
         Route::get('/users/create', function () {
@@ -1881,7 +1911,7 @@ Route::middleware('auth')->group(function () {
                 'name' => ['required', 'string', 'max:255'],
                 'email' => ['required', 'email', 'unique:users'],
                 'password' => ['required', 'string', 'min:8'],
-                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant'],
+                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant,manager'],
                 'department' => ['nullable', 'string', 'max:255'],
                 'career_coach_id' => ['nullable', 'exists:users,id'],
                 'date_of_birth' => ['nullable', 'date'],
@@ -2180,7 +2210,7 @@ Route::middleware('auth')->group(function () {
             $validated = $request->validate([
                 'name' => ['required', 'string', 'max:255'],
                 'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $user->id],
-                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant'],
+                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant,manager'],
                 'department' => ['nullable', 'string', 'max:255'],
                 'career_coach_id' => ['nullable', 'exists:users,id'],
                 'date_of_birth' => ['nullable', 'date'],
@@ -2265,7 +2295,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/users/{id}/role', function ($id, Request $request) {
             $user = User::withTrashed()->findOrFail($id);
             $validated = $request->validate([
-                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant'],
+                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant,manager'],
             ]);
 
             $previousRole = $user->role;

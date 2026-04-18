@@ -86,6 +86,7 @@
                     </p>
                     <div class="hero-actions">
                         <a href="{{ route('dashboard') }}" class="primary-btn"><i class="fa-solid fa-gauge-high"></i> Main Dashboard</a>
+                        <a href="{{ route('accounting.dashboard') }}" class="ghost-btn"><i class="fa-solid fa-calculator"></i> Accounting Hub</a>
                         <a href="{{ route('notifications.index') }}" class="ghost-btn"><i class="fa-regular fa-bell"></i> Open Notifications</a>
                     </div>
                 </div>

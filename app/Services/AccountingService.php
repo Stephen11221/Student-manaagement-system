@@ -467,7 +467,7 @@ class AccountingService
         }
 
         return match ($method) {
-            'bank' => ChartAccount::where('code', '1010')->firstOrFail(),
+            'bank', 'card', 'cheque' => ChartAccount::where('code', '1010')->firstOrFail(),
             'mobile_money' => ChartAccount::where('code', '1020')->firstOrFail(),
             default => ChartAccount::where('code', '1000')->firstOrFail(),
         };
@@ -479,6 +479,8 @@ class AccountingService
         $apAccount = ChartAccount::where('code', '2000')->firstOrFail();
         $vatPayable = ChartAccount::where('code', '2100')->firstOrFail();
         $vatRecoverable = ChartAccount::where('code', '1210')->firstOrFail();
+        $defaultRevenue = ChartAccount::where('code', '4000')->firstOrFail();
+        $defaultExpense = ChartAccount::where('code', '5000')->firstOrFail();
 
         $total = round((float) $invoice->subtotal + (float) $invoice->tax_amount, 2);
         $lines = [];
@@ -488,7 +490,7 @@ class AccountingService
             $accountId = $item['account_id'] ?? null;
 
             if (! $accountId) {
-                continue;
+                $accountId = $invoice->direction === 'payable' ? $defaultExpense->id : $defaultRevenue->id;
             }
 
             $lines[] = $invoice->direction === 'payable'
