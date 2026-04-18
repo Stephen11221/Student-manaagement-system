@@ -37,7 +37,7 @@ class AdminController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach'],
+            'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant,manager'],
             'department_id' => ['nullable', 'exists:departments,id'],
             'is_active' => ['boolean'],
         ]);
@@ -69,7 +69,7 @@ class AdminController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $user->id],
-            'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach'],
+            'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant,manager'],
             'department_id' => ['nullable', 'exists:departments,id'],
             'is_active' => ['boolean'],
             'status' => ['required', 'in:active,inactive,suspended,locked'],

@@ -77,7 +77,7 @@
                         <div>
                             <label>Role</label>
                             <select name="role" id="role-select" required>
-                                @foreach(['student' => 'Student', 'trainer' => 'Trainer', 'admin' => 'Admin', 'department_admin' => 'Department Admin', 'career_coach' => 'Career Coach'] as $value => $label)
+                                @foreach(['student' => 'Student', 'trainer' => 'Trainer', 'admin' => 'Admin', 'department_admin' => 'Department Admin', 'career_coach' => 'Career Coach', 'accountant' => 'Accountant', 'manager' => 'Manager'] as $value => $label)
                                     <option value="{{ $value }}" @selected(old('role', $user->role) === $value)>{{ $label }}</option>
                                 @endforeach
                             </select>

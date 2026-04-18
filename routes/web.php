@@ -1,8 +1,12 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AccountingController;
+use App\Http\Controllers\AttendanceController;
 use App\Models\Attendance;
+use App\Models\AuditLog;
 use App\Models\ClassRoom;
+use App\Models\FeePayment;
 use App\Models\Exam;
 use App\Models\ExamQuestion;
 use App\Models\ExamSubmission;
@@ -11,6 +15,8 @@ use App\Models\HomeworkSubmission;
 use App\Models\Notification;
 use App\Models\Timetable;
 use App\Models\User;
+use App\Services\AccountingService;
+use App\Services\DarajaService;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
@@ -79,6 +85,462 @@ function studentClassJoinUrl(ClassRoom $class): string
 function studentClassJoinLabel(ClassRoom $class): string
 {
     return $class->delivery_mode === 'online' ? 'Join Online Class' : 'Join Physical Class';
+}
+
+function accountantDashboardData(): array
+{
+    $students = User::where('role', 'student')
+        ->with(['currentClass', 'feePayments' => fn ($query) => $query->orderByDesc('paid_at')->orderByDesc('id')])
+        ->orderBy('name')
+        ->get();
+
+    $paymentQuery = FeePayment::with('student.currentClass')->orderByDesc('paid_at')->orderByDesc('id');
+    $recentPayments = (clone $paymentQuery)->limit(10)->get();
+    $cashReceived = (clone $paymentQuery)->where('payment_method', 'cash')->sum('amount_paid');
+    $pochiReceived = (clone $paymentQuery)->where('payment_method', 'pochi_la_biashara')->sum('amount_paid');
+    $bankReceived = (clone $paymentQuery)->where('payment_method', 'bank_transfer')->sum('amount_paid');
+
+    $totalDue = $students->sum(function (User $student) {
+        return $student->feePayments->sum('amount_due');
+    });
+
+    $totalPaid = $students->sum(function (User $student) {
+        return $student->feePayments->sum('amount_paid');
+    });
+
+    $outstandingBalance = max($totalDue - $totalPaid, 0);
+    $paidStudents = $students->filter(function (User $student) {
+        $due = (float) $student->feePayments->sum('amount_due');
+        $paid = (float) $student->feePayments->sum('amount_paid');
+
+        return $due > 0 && $paid >= $due;
+    })->count();
+
+    $partiallyPaidStudents = $students->filter(function (User $student) {
+        $due = (float) $student->feePayments->sum('amount_due');
+        $paid = (float) $student->feePayments->sum('amount_paid');
+
+        return $due > 0 && $paid > 0 && $paid < $due;
+    })->count();
+
+    $unpaidStudents = $students->filter(function (User $student) {
+        $due = (float) $student->feePayments->sum('amount_due');
+        $paid = (float) $student->feePayments->sum('amount_paid');
+
+        return $due <= 0 || $paid <= 0;
+    })->count();
+
+    $collectionRate = $totalDue > 0 ? round(($totalPaid / $totalDue) * 100, 1) : 0;
+
+    return compact(
+        'students',
+        'recentPayments',
+        'totalDue',
+        'totalPaid',
+        'outstandingBalance',
+        'paidStudents',
+        'partiallyPaidStudents',
+        'unpaidStudents',
+        'collectionRate'
+        ,
+        'cashReceived',
+        'pochiReceived',
+        'bankReceived'
+    );
+}
+
+Route::post('/daraja/mpesa/callback', function (Request $request) {
+    $callback = data_get($request->all(), 'Body.stkCallback', []);
+    $checkoutRequestId = data_get($callback, 'CheckoutRequestID');
+
+    if (! $checkoutRequestId) {
+        return response()->json(['message' => 'Missing CheckoutRequestID.']);
+    }
+
+    $payment = FeePayment::where('checkout_request_id', $checkoutRequestId)->first();
+
+    if (! $payment) {
+        return response()->json(['message' => 'Payment record not found.'], 404);
+    }
+
+    $items = collect(data_get($callback, 'CallbackMetadata.Item', []))
+        ->mapWithKeys(function ($item) {
+            return [data_get($item, 'Name') => data_get($item, 'Value')];
+        });
+
+    $resultCode = (string) data_get($callback, 'ResultCode', '1');
+    $resultDesc = data_get($callback, 'ResultDesc');
+    $merchantRequestId = data_get($callback, 'MerchantRequestID');
+    $amount = (float) ($items->get('Amount') ?? $payment->amount_paid);
+    $receiptNumber = $items->get('MpesaReceiptNumber');
+    $phoneNumber = $items->get('PhoneNumber');
+
+    $payment->fill([
+        'daraja_payload' => $request->all(),
+        'daraja_completed_at' => now(),
+        'daraja_response_code' => $resultCode,
+        'daraja_response_description' => $resultDesc,
+        'merchant_request_id' => $merchantRequestId ?: $payment->merchant_request_id,
+    ]);
+
+    if ($resultCode === '0') {
+        $payment->amount_paid = $amount;
+        $payment->payment_method = 'mpesa';
+        $payment->receipt_number = $receiptNumber ?: $payment->receipt_number;
+        $payment->transaction_id = $receiptNumber ?: $payment->transaction_id;
+        $payment->phone_number = $phoneNumber ?: $payment->phone_number;
+        $payment->paid_at = now();
+        $payment->status = $amount >= (float) $payment->amount_due ? 'paid' : ($amount > 0 ? 'partial' : 'unpaid');
+    }
+
+    $payment->save();
+
+    return response()->json(['message' => 'Callback received.']);
+})->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])->name('daraja.mpesa.callback');
+
+function normalizeImportHeader(string $header): string
+{
+    $header = preg_replace('/^\xEF\xBB\xBF/', '', trim($header)) ?? trim($header);
+
+    return preg_replace('/[^a-z0-9]+/i', '', strtolower($header)) ?? strtolower($header);
+}
+
+function canonicalStudentImportField(string $header): ?string
+{
+    static $map = [
+        'name' => 'name',
+        'fullname' => 'name',
+        'studentname' => 'name',
+        'middlename' => 'middle_name',
+        'middle_name' => 'middle_name',
+        'middleinitial' => 'middle_name',
+        'lastname' => 'last_name',
+        'secondname' => 'last_name',
+        'firstname' => 'first_name',
+        'firstnameandlastname' => 'name',
+        'surname' => 'last_name',
+        'email' => 'email',
+        'emailaddress' => 'email',
+        'password' => 'password',
+        'phone' => 'phone',
+        'phonenumber' => 'phone',
+        'mobile' => 'phone',
+        'department' => 'department',
+        'dateofbirth' => 'date_of_birth',
+        'dob' => 'date_of_birth',
+        'gender' => 'gender',
+        'address' => 'address',
+        'guardianname' => 'guardian_name',
+        'parentname' => 'guardian_name',
+        'parent_name' => 'guardian_name',
+        'parent' => 'guardian_name',
+        'guardianphone' => 'guardian_phone',
+        'parentphone' => 'guardian_phone',
+        'parent_phone' => 'guardian_phone',
+        'guardianrelationship' => 'guardian_relationship',
+        'parentrelationship' => 'guardian_relationship',
+        'parent_relationship' => 'guardian_relationship',
+        'currentclassid' => 'current_class_id',
+        'classid' => 'current_class_id',
+        'class' => 'current_class_id',
+        'classname' => 'class_name',
+        'stream' => 'stream',
+        'studentstatus' => 'student_status',
+        'status' => 'student_status',
+        'admissionnumber' => 'admission_number',
+        'admissionno' => 'admission_number',
+        'admno' => 'admission_number',
+        'regno' => 'admission_number',
+        'admissiondate' => 'admission_date',
+        'exitdate' => 'exit_date',
+        'transfernotes' => 'transfer_notes',
+        'careercoachid' => 'career_coach_id',
+        'careercoach' => 'career_coach_id',
+        'coachemail' => 'career_coach_id',
+        'coachid' => 'career_coach_id',
+        'coachname' => 'career_coach_id',
+    ];
+
+    return $map[normalizeImportHeader($header)] ?? null;
+}
+
+function splitImportLine(string $line): array
+{
+    $line = trim($line);
+
+    if ($line === '') {
+        return [];
+    }
+
+    if (str_contains($line, "\t")) {
+        return array_map('trim', explode("\t", $line));
+    }
+
+    if (str_contains($line, '|')) {
+        return array_map('trim', explode('|', $line));
+    }
+
+    if (str_contains($line, ',')) {
+        return array_map('trim', str_getcsv($line));
+    }
+
+    return array_map('trim', preg_split('/\s{2,}/', $line) ?: [$line]);
+}
+
+function parseDelimitedStudentImportRows(string $text): array
+{
+    $lines = array_values(array_filter(
+        array_map('trim', preg_split('/\R/', $text) ?: []),
+        fn ($line) => $line !== '',
+    ));
+
+    if ($lines === []) {
+        return [];
+    }
+
+    $headerCells = splitImportLine(array_shift($lines));
+    $headers = [];
+
+    foreach ($headerCells as $cell) {
+        $headers[] = canonicalStudentImportField($cell);
+    }
+
+    $rows = [];
+
+    foreach ($lines as $line) {
+        $values = splitImportLine($line);
+        $row = [];
+
+        foreach ($headers as $index => $field) {
+            if (! $field) {
+                continue;
+            }
+
+            $row[$field] = $values[$index] ?? '';
+        }
+
+        if ($row !== []) {
+            $rows[] = $row;
+        }
+    }
+
+    return $rows;
+}
+
+function xlsxColumnIndex(string $column): int
+{
+    $column = strtoupper(trim($column));
+    $index = 0;
+
+    foreach (str_split($column) as $char) {
+        if ($char < 'A' || $char > 'Z') {
+            continue;
+        }
+
+        $index = ($index * 26) + (ord($char) - 64);
+    }
+
+    return $index;
+}
+
+function xlsxSharedStrings(string $path): array
+{
+    $zip = new ZipArchive();
+
+    if ($zip->open($path) !== true) {
+        return [];
+    }
+
+    $xml = $zip->getFromName('xl/sharedStrings.xml') ?: '';
+    $zip->close();
+
+    if ($xml === '') {
+        return [];
+    }
+
+    $doc = new DOMDocument();
+    $doc->preserveWhiteSpace = false;
+
+    if (! $doc->loadXML($xml)) {
+        return [];
+    }
+
+    $xpath = new DOMXPath($doc);
+    $xpath->registerNamespace('a', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+
+    $strings = [];
+    foreach ($xpath->query('//a:si') as $node) {
+        $text = '';
+        foreach ($xpath->query('.//a:t', $node) as $textNode) {
+            $text .= $textNode->textContent;
+        }
+
+        $strings[] = $text;
+    }
+
+    return $strings;
+}
+
+function parseXlsxStudentImportRows(string $path): array
+{
+    $zip = new ZipArchive();
+
+    if ($zip->open($path) !== true) {
+        return [];
+    }
+
+    $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml') ?: '';
+    $zip->close();
+
+    if ($sheetXml === '') {
+        return [];
+    }
+
+    $sharedStrings = xlsxSharedStrings($path);
+    $doc = new DOMDocument();
+    $doc->preserveWhiteSpace = false;
+
+    if (! $doc->loadXML($sheetXml)) {
+        return [];
+    }
+
+    $xpath = new DOMXPath($doc);
+    $xpath->registerNamespace('a', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+
+    $rows = [];
+    foreach ($xpath->query('//a:sheetData/a:row') as $rowNode) {
+        $cells = [];
+
+        foreach ($xpath->query('a:c', $rowNode) as $cellNode) {
+            $ref = $cellNode->attributes?->getNamedItem('r')?->nodeValue ?? '';
+            $columnLetters = preg_replace('/\d+$/', '', $ref) ?: '';
+            $columnIndex = xlsxColumnIndex($columnLetters);
+            $type = $cellNode->attributes?->getNamedItem('t')?->nodeValue ?? '';
+            $value = '';
+
+            if ($type === 's') {
+                $sharedIndex = (int) ($xpath->evaluate('string(a:v)', $cellNode) ?: 0);
+                $value = $sharedStrings[$sharedIndex] ?? '';
+            } elseif ($type === 'inlineStr') {
+                $value = trim($xpath->evaluate('string(a:is//a:t)', $cellNode));
+            } else {
+                $value = trim($xpath->evaluate('string(a:v)', $cellNode));
+            }
+
+            if ($columnIndex > 0) {
+                $cells[$columnIndex] = $value;
+            }
+        }
+
+        ksort($cells);
+        $rows[] = array_values($cells);
+    }
+
+    if ($rows === []) {
+        return [];
+    }
+
+    $headers = array_map(
+        fn ($header) => canonicalStudentImportField((string) $header),
+        array_shift($rows),
+    );
+
+    $importRows = [];
+    foreach ($rows as $rowValues) {
+        $row = [];
+
+        foreach ($headers as $index => $field) {
+            if (! $field) {
+                continue;
+            }
+
+            $row[$field] = $rowValues[$index] ?? '';
+        }
+
+        if ($row !== []) {
+            $importRows[] = $row;
+        }
+    }
+
+    return $importRows;
+}
+
+function extractStudentImportTextFromPdf(string $path): string
+{
+    $command = sprintf(
+        'pdftotext -layout -nopgbrk %s - 2>/dev/null',
+        escapeshellarg($path),
+    );
+
+    $output = shell_exec($command);
+
+    return is_string($output) ? $output : '';
+}
+
+function extractStudentImportRowsFromUpload(UploadedFile $file): array
+{
+    $extension = strtolower($file->getClientOriginalExtension());
+    $path = $file->getRealPath() ?: $file->path();
+
+    return match ($extension) {
+        'xlsx' => parseXlsxStudentImportRows($path),
+        'pdf' => parseDelimitedStudentImportRows(extractStudentImportTextFromPdf($path)),
+        default => parseDelimitedStudentImportRows((string) file_get_contents($path)),
+    };
+}
+
+function resolveImportedClassId(?string $value, ?int $defaultId = null): ?int
+{
+    $value = trim((string) $value);
+
+    if ($value === '') {
+        return $defaultId;
+    }
+
+    if (ctype_digit($value)) {
+        return ClassRoom::find((int) $value)?->id ?? $defaultId;
+    }
+
+    return ClassRoom::whereRaw('LOWER(name) = ?', [strtolower($value)])->value('id') ?? $defaultId;
+}
+
+function resolveImportedCoachId(?string $value, ?int $defaultId = null): ?int
+{
+    $value = trim((string) $value);
+
+    if ($value === '') {
+        return $defaultId;
+    }
+
+    if (ctype_digit($value)) {
+        return User::find((int) $value)?->id ?? $defaultId;
+    }
+
+    return User::where(function ($query) use ($value) {
+        $query->whereRaw('LOWER(email) = ?', [strtolower($value)])
+            ->orWhereRaw('LOWER(name) = ?', [strtolower($value)]);
+    })->value('id') ?? $defaultId;
+}
+
+function buildImportedStudentName(array $row): string
+{
+    $name = trim((string) ($row['name'] ?? ''));
+
+    if ($name !== '') {
+        return $name;
+    }
+
+    $parts = [
+        trim((string) ($row['first_name'] ?? '')),
+        trim((string) ($row['middle_name'] ?? '')),
+        trim((string) ($row['last_name'] ?? '')),
+    ];
+
+    if (($row['first_name'] ?? '') === '' && ($row['last_name'] ?? '') === '') {
+        $parts[] = trim((string) ($row['surname'] ?? ''));
+    }
+
+    return trim(implode(' ', array_filter($parts, fn ($part) => $part !== '')));
 }
 
 function extractExamQuestionTextFromDocx(string $path): string
@@ -403,6 +865,18 @@ Route::middleware('auth')->group(function () {
             return view('dashboard.student', compact('classes', 'availableClasses'));
         }
 
+        if ($user->role === 'accountant') {
+            $dashboard = accountantDashboardData();
+
+            return view('dashboard.accountant', $dashboard);
+        }
+
+        if ($user->role === 'manager') {
+            $dashboard = app(AccountingService::class)->dashboardMetrics();
+
+            return view('accounting.dashboard', $dashboard);
+        }
+
         if (in_array($user->role, ['admin', 'department_admin'], true)) {
             $userQuery = User::query();
 
@@ -671,7 +1145,7 @@ Route::middleware('auth')->group(function () {
             return redirect()->route('trainer.timetable.index', $timetable->class_id)->with('status', 'Timetable slot updated.');
         })->name('trainer.timetable.update');
 
-        Route::post('/timetable/{timetable}/delete', function (Timetable $timetable) {
+        Route::delete('/timetable/{timetable}/delete', function (Timetable $timetable) {
             abort_unless($timetable->class && $timetable->class->trainer_id === Auth::id(), 403);
             $classId = $timetable->class_id;
             $timetable->delete();
@@ -770,7 +1244,7 @@ Route::middleware('auth')->group(function () {
             return redirect()->route('trainer.exams.index', $class->id)->with('status', 'Exam created successfully.');
         })->name('trainer.exams.store');
 
-        Route::post('/exams/{exam}/delete', function (Exam $exam) {
+        Route::delete('/exams/{exam}/delete', function (Exam $exam) {
             abort_unless($exam->class && $exam->class->trainer_id === Auth::id(), 403);
             $classId = $exam->class_id;
             $exam->delete();
@@ -896,35 +1370,41 @@ Route::middleware('auth')->group(function () {
         Route::post('/classes/{id}/attendance', function ($id, Request $request) {
             $class = Auth::user()->taughtClasses()->with('students')->findOrFail($id);
             $firstTimetable = $class->timetables()->first();
+            $attendanceDate = $request->validate([
+                'attendance_date' => ['nullable', 'date'],
+                'attendance' => ['required', 'array'],
+                'attendance.*' => ['required', 'in:present,absent,late,excused'],
+            ])['attendance_date'] ?? now()->toDateString();
 
             if (! $firstTimetable) {
                 return back()->with('error', 'Create at least one timetable slot before marking attendance.');
             }
 
-            $validated = $request->validate([
-                'attendance' => ['required', 'array'],
-                'attendance.*' => ['required', 'in:present,absent,late'],
-            ]);
-
             foreach ($class->students as $student) {
-                $status = $validated['attendance'][$student->id] ?? 'absent';
+                $status = $request->input("attendance.{$student->id}", 'absent');
 
                 Attendance::updateOrCreate(
                     [
+                        'attendance_date' => $attendanceDate,
+                        'scope_type' => 'class',
+                        'scope_id' => $class->id,
                         'class_id' => $class->id,
                         'student_id' => $student->id,
-                        'timetable_id' => $firstTimetable->id,
                     ],
                     [
+                        'department_id' => null,
+                        'timetable_id' => $firstTimetable->id,
                         'status' => $status,
                         'marked_at' => now(),
+                        'recorded_by' => Auth::id(),
+                        'source' => 'bulk',
                     ]
                 );
 
                 Notification::create([
                     'user_id' => $student->id,
                     'title' => 'Attendance Updated',
-                    'message' => "Your attendance for {$class->name} was marked as " . ucfirst($status) . '.',
+                    'message' => "Your attendance for {$class->name} on {$attendanceDate} was marked as " . ucfirst($status) . '.',
                     'type' => 'attendance',
                 ]);
             }
@@ -1274,20 +1754,22 @@ Route::middleware('auth')->group(function () {
         })->name('student.homework.store');
 
         Route::get('/attendance', function () {
-            $class = studentCurrentClass(Auth::user());
             $attendance = Auth::user()->attendanceRecords()
-                ->when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))
-                ->with('classRoom', 'timetable')
+                ->with(['classRoom', 'department', 'timetable', 'recordedBy'])
+                ->when(request()->filled('date'), fn ($query) => $query->whereDate('attendance_date', request('date')))
+                ->when(request()->filled('class_id'), fn ($query) => $query->where('class_id', request('class_id')))
+                ->when(request()->filled('department_id'), fn ($query) => $query->where('department_id', request('department_id')))
+                ->latest('attendance_date')
                 ->latest('marked_at')
                 ->get();
             $total = $attendance->count();
-            $attended = $attendance->whereIn('status', ['present', 'late'])->count();
-            $attendancePercentage = $total > 0 ? ($attended / $total) * 100 : 0;
             $presentCount = $attendance->where('status', 'present')->count();
             $lateCount = $attendance->where('status', 'late')->count();
+            $excusedCount = $attendance->where('status', 'excused')->count();
             $absentCount = $attendance->where('status', 'absent')->count();
+            $attendancePercentage = $total > 0 ? (($presentCount + $lateCount + $excusedCount) / $total) * 100 : 0;
 
-            return view('student.attendance.index', compact('attendance', 'attendancePercentage', 'presentCount', 'lateCount', 'absentCount'));
+            return view('student.attendance.index', compact('attendance', 'attendancePercentage', 'presentCount', 'lateCount', 'excusedCount', 'absentCount'));
         })->name('student.attendance.index');
     });
 
@@ -1301,6 +1783,103 @@ Route::middleware('auth')->group(function () {
         })->name('career-coach.students.show');
     });
 
+    Route::middleware('auth')->prefix('attendance')->group(function () {
+        Route::post('/check-in', [AttendanceController::class, 'checkIn'])->name('attendance.check-in');
+        Route::post('/check-out', [AttendanceController::class, 'checkOut'])->name('attendance.check-out');
+    });
+
+    Route::middleware('role:accountant')->prefix('accountant')->group(function () {
+        Route::get('/', function () {
+            return view('dashboard.accountant', accountantDashboardData());
+        })->name('accountant.dashboard');
+
+        Route::get('/payments/{payment}/edit', function (FeePayment $payment) {
+            $students = User::where('role', 'student')->orderBy('name')->get();
+
+            return view('accountant.payments.edit', compact('payment', 'students'));
+        })->name('accountant.payments.edit');
+
+        Route::put('/payments/{payment}', function (FeePayment $payment, Request $request) {
+            $validated = $request->validate([
+                'student_id' => ['required', 'exists:users,id'],
+                'academic_year' => ['nullable', 'string', 'max:255'],
+                'term' => ['nullable', 'string', 'max:255'],
+                'amount_due' => ['required', 'numeric', 'min:0'],
+                'amount_paid' => ['required', 'numeric', 'min:0'],
+                'payment_method' => ['required', 'in:cash,mpesa,pochi_la_biashara,bank_transfer,card,other'],
+                'phone_number' => ['nullable', 'string', 'max:255'],
+                'receipt_number' => ['nullable', 'string', 'max:255', 'unique:fee_payments,receipt_number,' . $payment->id],
+                'paid_at' => ['nullable', 'date'],
+                'status' => ['required', 'in:paid,partial,unpaid'],
+                'notes' => ['nullable', 'string'],
+            ]);
+
+            $student = User::where('role', 'student')->findOrFail($validated['student_id']);
+
+            $payment->update([
+                ...$validated,
+                'student_id' => $student->id,
+                'paid_at' => $validated['paid_at'] ?? ($validated['status'] === 'unpaid' ? null : ($payment->paid_at ?? now())),
+            ]);
+
+            AuditLog::log('update', 'FeePayment', $payment->id, $validated, "Updated fee payment for {$student->name}");
+
+            return redirect()->route('accountant.dashboard')->with('status', 'Fee payment updated successfully.');
+        })->name('accountant.payments.update');
+
+        Route::post('/payments/{payment}/daraja/stk-push', function (FeePayment $payment, Request $request, DarajaService $darajaService) {
+            $validated = $request->validate([
+                'phone_number' => ['required', 'string', 'max:255'],
+                'amount' => ['nullable', 'numeric', 'min:1'],
+            ]);
+
+            $response = $darajaService->initiateStkPush(
+                $payment,
+                $validated['phone_number'],
+                $validated['amount'] ?? null,
+                $payment->receipt_number ?: 'FEE-' . $payment->id,
+                'School fee payment'
+            );
+
+            $payment->fill([
+                'payment_method' => 'mpesa',
+                'phone_number' => $validated['phone_number'],
+                'checkout_request_id' => data_get($response, 'CheckoutRequestID'),
+                'merchant_request_id' => data_get($response, 'MerchantRequestID'),
+                'daraja_response_code' => (string) data_get($response, 'ResponseCode'),
+                'daraja_response_description' => data_get($response, 'ResponseDescription'),
+                'daraja_payload' => $response,
+                'daraja_requested_at' => now(),
+            ]);
+            $payment->save();
+
+            AuditLog::log('update', 'FeePayment', $payment->id, ['daraja' => $response], "Sent Daraja STK push for fee payment #{$payment->id}");
+
+            return back()->with('status', 'Daraja STK push sent successfully.');
+        })->name('accountant.payments.daraja.push');
+    });
+
+    Route::middleware('role:admin,accountant,manager')->prefix('accounting')->group(function () {
+        Route::get('/', [AccountingController::class, 'dashboard'])->name('accounting.dashboard');
+        Route::get('/accounts', [AccountingController::class, 'accounts'])->name('accounting.accounts.index');
+        Route::post('/accounts', [AccountingController::class, 'storeAccount'])->name('accounting.accounts.store');
+        Route::put('/accounts/{account}', [AccountingController::class, 'updateAccount'])->name('accounting.accounts.update');
+        Route::delete('/accounts/{account}', [AccountingController::class, 'destroyAccount'])->name('accounting.accounts.destroy');
+
+        Route::get('/transactions', [AccountingController::class, 'transactions'])->name('accounting.transactions.index');
+        Route::post('/transactions', [AccountingController::class, 'storeJournal'])->name('accounting.transactions.store');
+        Route::put('/transactions/{journal}', [AccountingController::class, 'updateJournal'])->name('accounting.transactions.update');
+        Route::delete('/transactions/{journal}', [AccountingController::class, 'destroyJournal'])->name('accounting.transactions.destroy');
+
+        Route::get('/invoices', [AccountingController::class, 'invoices'])->name('accounting.invoices.index');
+        Route::post('/invoices', [AccountingController::class, 'storeInvoice'])->name('accounting.invoices.store');
+        Route::put('/invoices/{invoice}', [AccountingController::class, 'updateInvoice'])->name('accounting.invoices.update');
+        Route::post('/invoices/{invoice}/payments', [AccountingController::class, 'recordPayment'])->name('accounting.invoices.payments.store');
+
+        Route::get('/reports', [AccountingController::class, 'reports'])->name('accounting.reports.index');
+        Route::get('/reports/export/{type}', [AccountingController::class, 'export'])->name('accounting.reports.export');
+    });
+
     Route::middleware('role:admin,department_admin')->prefix('admin')->group(function () {
         Route::get('/users', function () {
             $viewer = Auth::user();
@@ -1310,13 +1889,14 @@ Route::middleware('auth')->group(function () {
                 $userQuery->where('department', $viewer->department);
             }
 
-            $users = $userQuery->with(['careerCoach', 'currentClass'])->paginate(15);
+            $users = $userQuery->with(['careerCoach', 'currentClass'])->orderBy('role')->orderBy('name')->paginate(15);
             $totalUsers = (clone $userQuery)->count();
             $students = (clone $userQuery)->where('role', 'student')->count();
             $trainers = (clone $userQuery)->where('role', 'trainer')->count();
             $admins = (clone $userQuery)->whereIn('role', ['admin', 'department_admin'])->count();
+            $managers = (clone $userQuery)->where('role', 'manager')->count();
 
-            return view('admin.users.index', compact('users', 'totalUsers', 'students', 'trainers', 'admins'));
+            return view('admin.users.index', compact('users', 'totalUsers', 'students', 'trainers', 'admins', 'managers'));
         })->name('admin.users.index');
 
         Route::get('/users/create', function () {
@@ -1331,7 +1911,7 @@ Route::middleware('auth')->group(function () {
                 'name' => ['required', 'string', 'max:255'],
                 'email' => ['required', 'email', 'unique:users'],
                 'password' => ['required', 'string', 'min:8'],
-                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach'],
+                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant,manager'],
                 'department' => ['nullable', 'string', 'max:255'],
                 'career_coach_id' => ['nullable', 'exists:users,id'],
                 'date_of_birth' => ['nullable', 'date'],
@@ -1395,6 +1975,208 @@ Route::middleware('auth')->group(function () {
             return redirect()->route('admin.users.index')->with('status', 'User created.');
         })->name('admin.users.store');
 
+        Route::post('/users/import-students', function (Request $request) {
+            $validated = $request->validate([
+                'student_import_file' => ['required', 'file', 'mimes:csv,txt,pdf,xlsx'],
+                'student_import_password' => ['required', 'string', 'min:8'],
+                'student_import_class_id' => ['nullable', 'exists:class_rooms,id'],
+                'student_import_career_coach_id' => ['nullable', 'exists:users,id'],
+                'student_import_department' => ['nullable', 'string', 'max:255'],
+                'student_import_student_status' => ['nullable', 'in:active,transferred,alumni'],
+            ]);
+
+            $importRows = extractStudentImportRowsFromUpload($request->file('student_import_file'));
+
+            if (count($importRows) === 0) {
+                return back()
+                    ->withErrors(['student_import_file' => 'No student rows could be read from the uploaded file.'])
+                    ->withInput();
+            }
+
+            $created = 0;
+            $skipped = [];
+            $defaultClassId = $validated['student_import_class_id'] ?? null;
+            $defaultCoachId = $validated['student_import_career_coach_id'] ?? null;
+            $defaultDepartment = trim((string) ($validated['student_import_department'] ?? ''));
+            $defaultStatus = $validated['student_import_student_status'] ?? 'active';
+
+            foreach ($importRows as $index => $row) {
+                $rowNumber = $index + 2;
+
+                try {
+                    $name = buildImportedStudentName($row);
+
+                    $email = trim((string) ($row['email'] ?? ''));
+
+                    if ($name === '' || $email === '') {
+                        $skipped[] = "Row {$rowNumber}: missing name or email.";
+                        continue;
+                    }
+
+                    if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        $skipped[] = "Row {$rowNumber}: invalid email address.";
+                        continue;
+                    }
+
+                    if (User::withTrashed()->whereRaw('LOWER(email) = ?', [strtolower($email)])->exists()) {
+                        $skipped[] = "Row {$rowNumber}: email {$email} already exists.";
+                        continue;
+                    }
+
+                    $password = trim((string) ($row['password'] ?? '')) ?: $validated['student_import_password'];
+                    $studentStatus = trim((string) ($row['student_status'] ?? '')) ?: $defaultStatus;
+                    $admissionDate = trim((string) ($row['admission_date'] ?? '')) ?: now()->toDateString();
+                    $classId = resolveImportedClassId($row['current_class_id'] ?? $row['class_id'] ?? $row['class_name'] ?? null, $defaultClassId);
+                    $coachId = resolveImportedCoachId($row['career_coach_id'] ?? $row['coach_id'] ?? $row['coach_name'] ?? $row['coach_email'] ?? null, $defaultCoachId);
+                    $admissionNumber = trim((string) ($row['admission_number'] ?? '')) ?: generateAdmissionNumber();
+
+                    $student = User::create([
+                        'name' => $name,
+                        'email' => $email,
+                        'password' => Hash::make($password),
+                        'role' => 'student',
+                        'department' => trim((string) ($row['department'] ?? $defaultDepartment)) ?: null,
+                        'career_coach_id' => $coachId,
+                        'admission_number' => $admissionNumber,
+                        'date_of_birth' => ! empty($row['date_of_birth']) ? $row['date_of_birth'] : null,
+                        'gender' => ! empty($row['gender']) ? strtolower(trim((string) $row['gender'])) : null,
+                        'phone' => ! empty($row['phone']) ? $row['phone'] : null,
+                        'address' => ! empty($row['address']) ? $row['address'] : null,
+                        'guardian_name' => ! empty($row['guardian_name']) ? $row['guardian_name'] : null,
+                        'guardian_phone' => ! empty($row['guardian_phone']) ? $row['guardian_phone'] : null,
+                        'guardian_relationship' => ! empty($row['guardian_relationship']) ? $row['guardian_relationship'] : null,
+                        'current_class_id' => $classId,
+                        'stream' => ! empty($row['stream']) ? $row['stream'] : null,
+                        'student_status' => in_array($studentStatus, ['active', 'transferred', 'alumni'], true) ? $studentStatus : $defaultStatus,
+                        'admission_date' => $admissionDate,
+                        'exit_date' => ! empty($row['exit_date']) ? $row['exit_date'] : null,
+                        'transfer_notes' => ! empty($row['transfer_notes']) ? $row['transfer_notes'] : null,
+                    ]);
+
+                    syncStudentEnrollment($student);
+                    $created++;
+                } catch (\Throwable $e) {
+                    $skipped[] = "Row {$rowNumber}: import failed.";
+                }
+            }
+
+            $message = "Imported {$created} student" . ($created === 1 ? '' : 's') . '.';
+            if ($skipped !== []) {
+                $message .= ' Skipped ' . count($skipped) . ' row' . (count($skipped) === 1 ? '' : 's') . '.';
+            }
+
+            return redirect()
+                ->route('admin.users.create')
+                ->with('status', $message)
+                ->with('import_warnings', array_slice($skipped, 0, 5));
+        })->name('admin.users.import-students');
+
+        Route::get('/users/import-students-template', function () {
+            $headers = [
+                'name',
+                'first_name',
+                'middle_name',
+                'last_name',
+                'email',
+                'password',
+                'phone',
+                'department',
+                'date_of_birth',
+                'gender',
+                'address',
+                'guardian_name',
+                'guardian_phone',
+                'guardian_relationship',
+                'parent_name',
+                'parent_phone',
+                'parent_relationship',
+                'admission_number',
+                'current_class_id',
+                'class_name',
+                'stream',
+                'student_status',
+                'admission_date',
+                'exit_date',
+                'transfer_notes',
+                'career_coach_id',
+                'career_coach_email',
+            ];
+
+            $sampleRows = [
+                [
+                    'John Doe',
+                    'John',
+                    'Michael',
+                    'Doe',
+                    'john.doe@example.com',
+                    'Student@123',
+                    '+254700000001',
+                    'Science',
+                    '2010-05-12',
+                    'male',
+                    'Nairobi',
+                    'Jane Doe',
+                    '+254700000002',
+                    'Mother',
+                    'Jane Doe',
+                    '+254700000002',
+                    'Mother',
+                    'ADM20260001',
+                    '1',
+                    'Grade 10 A',
+                    'East',
+                    'active',
+                    '2026-01-10',
+                    '',
+                    '',
+                    '2',
+                    'coach@example.com',
+                ],
+                [
+                    'Mary Wanjiku',
+                    'Mary',
+                    '',
+                    'Wanjiku',
+                    'mary.wanjiku@example.com',
+                    'Student@123',
+                    '+254700000003',
+                    'Arts',
+                    '2009-11-04',
+                    'female',
+                    'Kiambu',
+                    'Peter Wanjiku',
+                    '+254700000004',
+                    'Father',
+                    'Peter Wanjiku',
+                    '+254700000004',
+                    'Father',
+                    'ADM20260002',
+                    '2',
+                    'Grade 9 B',
+                    'West',
+                    'active',
+                    '2026-01-10',
+                    '',
+                    '',
+                    '2',
+                    'coach@example.com',
+                ],
+            ];
+
+            return response()->streamDownload(function () use ($headers, $sampleRows) {
+                $output = fopen('php://output', 'w');
+                fputcsv($output, $headers);
+
+                foreach ($sampleRows as $row) {
+                    fputcsv($output, $row);
+                }
+
+                fclose($output);
+            }, 'student-import-template.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
+        })->name('admin.users.import-students-template');
+
         Route::get('/users/{id}/edit', function ($id) {
             $user = User::withTrashed()->findOrFail($id);
             $careerCoaches = User::where('role', 'career_coach')->orderBy('name')->get();
@@ -1428,7 +2210,7 @@ Route::middleware('auth')->group(function () {
             $validated = $request->validate([
                 'name' => ['required', 'string', 'max:255'],
                 'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $user->id],
-                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach'],
+                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant,manager'],
                 'department' => ['nullable', 'string', 'max:255'],
                 'career_coach_id' => ['nullable', 'exists:users,id'],
                 'date_of_birth' => ['nullable', 'date'],
@@ -1477,6 +2259,14 @@ Route::middleware('auth')->group(function () {
                 deleteUserStudentDocuments($user);
                 $validated['birth_certificate_path'] = null;
                 $validated['report_form_path'] = null;
+                $validated['career_coach_id'] = null;
+                $validated['current_class_id'] = null;
+                $validated['stream'] = null;
+                $validated['student_status'] = null;
+                $validated['admission_date'] = null;
+                $validated['exit_date'] = null;
+                $validated['transfer_notes'] = null;
+                $validated['admission_number'] = null;
             }
 
             if ($validated['role'] === 'student' && $request->hasFile('birth_certificate')) {
@@ -1502,6 +2292,40 @@ Route::middleware('auth')->group(function () {
             return redirect()->route('admin.users.index')->with('status', 'User updated successfully.');
         })->name('admin.users.update');
 
+        Route::post('/users/{id}/role', function ($id, Request $request) {
+            $user = User::withTrashed()->findOrFail($id);
+            $validated = $request->validate([
+                'role' => ['required', 'in:student,trainer,admin,department_admin,career_coach,accountant,manager'],
+            ]);
+
+            $previousRole = $user->role;
+            $user->role = $validated['role'];
+
+            if ($validated['role'] !== 'student') {
+                deleteUserStudentDocuments($user);
+                $user->career_coach_id = null;
+                $user->current_class_id = null;
+                $user->stream = null;
+                $user->student_status = null;
+                $user->admission_date = null;
+                $user->exit_date = null;
+                $user->transfer_notes = null;
+                $user->admission_number = null;
+                $user->birth_certificate_path = null;
+                $user->report_form_path = null;
+                $user->enrolledClasses()->detach();
+            } elseif (! $user->admission_number) {
+                $user->admission_number = generateAdmissionNumber();
+            }
+
+            $user->save();
+            syncStudentEnrollment($user);
+
+            AuditLog::log('update', 'User', $user->id, ['role' => ['from' => $previousRole, 'to' => $user->role]], "Changed role for {$user->name} from {$previousRole} to {$user->role}");
+
+            return redirect()->route('admin.users.index')->with('status', 'User role updated successfully.');
+        })->name('admin.users.role');
+
         Route::post('/users/{id}/suspend', function ($id) {
             $user = User::findOrFail($id);
             $user->delete();
@@ -1516,7 +2340,7 @@ Route::middleware('auth')->group(function () {
             return redirect()->route('admin.users.index')->with('status', 'User activated successfully.');
         })->name('admin.users.activate');
 
-        Route::post('/users/{id}/delete', function ($id) {
+        Route::delete('/users/{id}/delete', function ($id) {
             $user = User::withTrashed()->findOrFail($id);
             deleteUserStudentDocuments($user);
             $user->enrolledClasses()->detach();
@@ -1524,6 +2348,12 @@ Route::middleware('auth')->group(function () {
 
             return redirect()->route('admin.users.index')->with('status', 'User permanently deleted.');
         })->name('admin.users.delete');
+
+        Route::get('/attendance', [AttendanceController::class, 'dashboard'])->name('admin.attendance.index');
+        Route::get('/attendance/report', [AttendanceController::class, 'report'])->name('admin.attendance.report');
+        Route::get('/attendance/export.csv', [AttendanceController::class, 'csv'])->name('admin.attendance.export.csv');
+        Route::post('/attendance/bulk', [AttendanceController::class, 'bulkStore'])->name('admin.attendance.bulk');
+        Route::get('/attendance/classes/{class}', [AttendanceController::class, 'manageClass'])->name('admin.attendance.class');
 
         Route::get('/classes', function () {
             $classes = ClassRoom::with(['trainer', 'students', 'homeworks'])->get();

@@ -77,18 +77,32 @@ class StudentController extends Controller
         return redirect()->route('student.homework.index')->with('success', 'Homework submitted!');
     }
 
-    public function getAttendance()
+    public function getAttendance(Request $request)
     {
-        $class = Auth::user()->currentClass;
-        $attendance = Attendance::where('student_id', Auth::id())
-            ->when($class, fn ($query) => $query->where('class_id', $class->id), fn ($query) => $query->whereRaw('1 = 0'))
-            ->with('classRoom', 'timetable')
-            ->get();
+        $attendanceQuery = Attendance::where('student_id', Auth::id())
+            ->with(['classRoom', 'department', 'timetable', 'recordedBy'])
+            ->when($request->filled('date'), fn ($query) => $query->whereDate('attendance_date', $request->date))
+            ->when($request->filled('class_id'), fn ($query) => $query->where('class_id', $request->class_id))
+            ->when($request->filled('department_id'), fn ($query) => $query->where('department_id', $request->department_id))
+            ->orderByDesc('attendance_date')
+            ->orderByDesc('marked_at');
 
+        $attendance = $attendanceQuery->get();
         $totalClasses = $attendance->count();
         $presentCount = $attendance->where('status', 'present')->count();
-        $attendancePercentage = $totalClasses > 0 ? ($presentCount / $totalClasses * 100) : 0;
+        $lateCount = $attendance->where('status', 'late')->count();
+        $excusedCount = $attendance->where('status', 'excused')->count();
+        $absentCount = $attendance->where('status', 'absent')->count();
+        $attendancePercentage = $totalClasses > 0 ? ((($presentCount + $lateCount + $excusedCount) / $totalClasses) * 100) : 0;
 
-        return view('student.attendance.index', compact('attendance', 'attendancePercentage', 'presentCount', 'totalClasses'));
+        return view('student.attendance.index', compact(
+            'attendance',
+            'attendancePercentage',
+            'presentCount',
+            'lateCount',
+            'excusedCount',
+            'absentCount',
+            'totalClasses'
+        ));
     }
 }
