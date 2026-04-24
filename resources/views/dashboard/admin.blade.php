@@ -70,6 +70,7 @@
                 <div class="quick-link"><i class="fa-solid fa-book-open-reader fa-2x"></i><h3>Manage homework</h3><p>Create and update assignments centrally across the school portal.</p><a href="{{ route('admin.homework.index') }}"><i class="fa-solid fa-list-check"></i> Open homework</a></div>
                 <div class="quick-link"><i class="fa-solid fa-clipboard-check fa-2x"></i><h3>Attendance hub</h3><p>Monitor daily attendance, manage bulk entry, and export reports.</p><a href="{{ route('admin.attendance.index') }}"><i class="fa-solid fa-arrow-right"></i> Open attendance</a></div>
                 <div class="quick-link"><i class="fa-solid fa-calendar-days fa-2x"></i><h3>Meetings</h3><p>Create team-format meetings for trainers, accountants, and career coaches.</p><a href="{{ route('admin.staff.index', 'trainer') }}"><i class="fa-solid fa-arrow-right"></i> Open meeting hub</a></div>
+                <div class="quick-link"><i class="fa-solid fa-calendar-check fa-2x"></i><h3>Meeting board</h3><p>Open the shared meeting board so the rest of the portal can view scheduled meetings.</p><a href="{{ route('meetings.index') }}"><i class="fa-solid fa-arrow-right"></i> View meetings</a></div>
                 <div class="quick-link"><i class="fa-solid fa-calculator fa-2x"></i><h3>Accounting hub</h3><p>Review ledgers, invoices, statements, and financial reports.</p><a href="{{ route('accounting.dashboard') }}"><i class="fa-solid fa-arrow-right"></i> Open accounting</a></div>
             </div>
 

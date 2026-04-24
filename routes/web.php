@@ -1003,6 +1003,41 @@ Route::middleware('auth')->group(function () {
         return back()->with('status', 'Notification deleted.');
     })->name('notifications.delete');
 
+    Route::get('/meetings', function () {
+        $user = Auth::user();
+        abort_if($user->role === 'student', 403);
+
+        $baseQuery = StaffMeeting::with(['staff', 'creator'])
+            ->when($user->role === 'admin', function ($query) {
+                return $query;
+            })
+            ->when($user->role !== 'admin' && in_array($user->role, ['trainer', 'accountant', 'career_coach'], true), function ($query) use ($user) {
+                $query->where(function ($meetingQuery) use ($user) {
+                    $meetingQuery->where('audience_type', 'team')
+                        ->orWhere(function ($individualQuery) use ($user) {
+                            $individualQuery->where('audience_type', 'individual')
+                                ->where('staff_id', $user->id);
+                        });
+                })->where(function ($teamQuery) use ($user) {
+                    $teamQuery->where('team_role', $user->role)
+                        ->orWhere('audience_type', 'team');
+                });
+            })
+            ->when(! in_array($user->role, ['admin', 'trainer', 'accountant', 'career_coach'], true), function ($query) {
+                $query->where('audience_type', 'team');
+            });
+
+        $upcomingCount = (clone $baseQuery)->where('scheduled_at', '>=', now())->count();
+        $pastCount = (clone $baseQuery)->where('scheduled_at', '<', now())->count();
+        $meetings = (clone $baseQuery)->orderBy('scheduled_at', 'desc')->paginate(12);
+
+        return view('meetings.index', [
+            'meetings' => $meetings,
+            'upcomingCount' => $upcomingCount,
+            'pastCount' => $pastCount,
+        ]);
+    })->name('meetings.index');
+
     Route::get('/chat/messages', function () {
         $messages = ChatMessage::with('sender')
             ->where('room', 'all-users')
