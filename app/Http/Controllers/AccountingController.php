@@ -6,6 +6,7 @@ use App\Models\AccountingInvoice;
 use App\Models\AccountingJournal;
 use App\Models\AccountingPayment;
 use App\Models\ChartAccount;
+use App\Models\User;
 use App\Services\AccountingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -258,10 +259,14 @@ class AccountingController extends Controller
         $ledgerAccountId = $request->integer('account_id');
         $ledgerAccount = $ledgerAccountId ? ChartAccount::find($ledgerAccountId) : null;
         $ledger = $ledgerAccount ? $service->ledger($ledgerAccount, $from, $to) : collect();
+        $paidStudents = $this->paidStudentsSheet();
 
         return view('accounting.reports', array_merge($metrics, [
             'ledgerAccount' => $ledgerAccount,
             'ledger' => $ledger,
+            'paidStudents' => $paidStudents,
+            'paidStudentsCount' => $paidStudents->count(),
+            'paidStudentsTotal' => $paidStudents->sum('amount_paid'),
         ]));
     }
 
@@ -274,6 +279,7 @@ class AccountingController extends Controller
             'balance-sheet' => 'balance-sheet',
             'cash-flow' => 'cash-flow',
             'ledger' => 'general-ledger',
+            'paid-students' => 'paid-students-sheet',
             default => 'profit-loss',
         };
 
@@ -293,6 +299,7 @@ class AccountingController extends Controller
                 ]
             ),
             'ledger' => $this->ledgerRowsFromRequest($request, $service, $from, $to),
+            'paid-students' => $this->paidStudentsRows(),
             default => array_merge(
                 [['Section', 'Amount']],
                 [
@@ -458,6 +465,59 @@ class AccountingController extends Controller
                 number_format((float) $line->debit, 2, '.', ''),
                 number_format((float) $line->credit, 2, '.', ''),
                 number_format($running, 2, '.', ''),
+            ];
+        }
+
+        return $rows;
+    }
+
+    protected function paidStudentsSheet()
+    {
+        return User::where('role', 'student')
+            ->with(['currentClass', 'feePayments' => fn ($query) => $query->orderByDesc('paid_at')->orderByDesc('id')])
+            ->orderBy('name')
+            ->get()
+            ->map(function (User $student) {
+                $totalDue = (float) $student->feePayments->sum('amount_due');
+                $totalPaid = (float) $student->feePayments->sum('amount_paid');
+                $balance = max($totalDue - $totalPaid, 0);
+
+                return [
+                    'student' => $student,
+                    'name' => $student->name,
+                    'admission_number' => $student->admission_number,
+                    'class_name' => $student->currentClass?->name ?? '-',
+                    'academic_year' => $student->feePayments->first()?->academic_year ?? '-',
+                    'term' => $student->feePayments->first()?->term ?? '-',
+                    'amount_due' => $totalDue,
+                    'amount_paid' => $totalPaid,
+                    'balance' => $balance,
+                    'last_paid_at' => $student->feePayments->first()?->paid_at,
+                    'payment_method' => $student->feePayments->first()?->payment_method ?? '-',
+                    'status' => $balance <= 0 && $totalDue > 0 ? 'paid' : ($totalPaid > 0 ? 'partial' : 'unpaid'),
+                ];
+            })
+            ->filter(fn (array $row) => $row['status'] === 'paid')
+            ->values();
+    }
+
+    protected function paidStudentsRows(): array
+    {
+        $rows = [['Student', 'Admission No.', 'Class', 'Academic Year', 'Term', 'Amount Due', 'Amount Paid', 'Balance', 'Last Paid At', 'Payment Method', 'Status']];
+
+        foreach ($this->paidStudentsSheet() as $row) {
+            $rows[] = [
+                $row['name'],
+                $row['admission_number'] ?? '-',
+                $row['class_name'],
+                $row['academic_year'],
+                $row['term'],
+                number_format($row['amount_due'], 2, '.', ''),
+                number_format($row['amount_paid'], 2, '.', ''),
+                number_format($row['balance'], 2, '.', ''),
+                optional($row['last_paid_at'])->format('Y-m-d H:i') ?? '-',
+                $row['payment_method'],
+                ucfirst($row['status']),
             ];
         }
 

@@ -93,6 +93,81 @@
         </div>
     </div>
 
+    <div id="paid-students-sheet" class="grid gap-6 lg:grid-cols-3">
+        <div class="rounded-3xl border border-slate-200/10 bg-slate-950/70 p-6 lg:col-span-2">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-white">Paid students sheet</h2>
+                    <p class="mt-2 text-slate-400">
+                        Students who have cleared their current fee balance.
+                    </p>
+                </div>
+                <a href="{{ route('accounting.reports.export', ['type' => 'paid-students']) }}"
+                    class="rounded-xl border border-slate-700 px-4 py-3 font-semibold text-white hover:bg-slate-800">
+                    Export Paid Students CSV
+                </a>
+            </div>
+
+            <div class="mt-4 grid gap-4 md:grid-cols-3">
+                <div class="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+                    <p class="text-sm text-emerald-200">Cleared students</p>
+                    <p class="mt-2 text-2xl font-bold text-white">{{ $paidStudentsCount ?? 0 }}</p>
+                </div>
+                <div class="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 p-4">
+                    <p class="text-sm text-cyan-200">Total paid</p>
+                    <p class="mt-2 text-2xl font-bold text-white">KSh {{ number_format($paidStudentsTotal ?? 0, 2) }}</p>
+                </div>
+                <div class="rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4">
+                    <p class="text-sm text-amber-200">Sheet status</p>
+                    <p class="mt-2 text-2xl font-bold text-white">Live</p>
+                </div>
+            </div>
+
+            <div class="mt-4 overflow-x-auto">
+                <table class="min-w-full text-sm text-left">
+                    <thead class="text-slate-400">
+                        <tr>
+                            <th class="py-3 pr-4">Student</th>
+                            <th class="py-3 pr-4">Class</th>
+                            <th class="py-3 pr-4">Total Due</th>
+                            <th class="py-3 pr-4">Total Paid</th>
+                            <th class="py-3 pr-4">Balance</th>
+                            <th class="py-3 pr-4">Last Paid</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800 text-slate-200">
+                        @forelse($paidStudents ?? [] as $row)
+                            <tr>
+                                <td class="py-3 pr-4">
+                                    <div class="font-semibold text-white">{{ $row['name'] }}</div>
+                                    <div class="text-xs text-slate-400">{{ $row['admission_number'] ?? '-' }}</div>
+                                </td>
+                                <td class="py-3 pr-4">{{ $row['class_name'] }}</td>
+                                <td class="py-3 pr-4">KSh {{ number_format($row['amount_due'], 2) }}</td>
+                                <td class="py-3 pr-4">KSh {{ number_format($row['amount_paid'], 2) }}</td>
+                                <td class="py-3 pr-4 text-emerald-200">KSh {{ number_format($row['balance'], 2) }}</td>
+                                <td class="py-3 pr-4">{{ optional($row['last_paid_at'])->format('Y-m-d H:i') ?? '-' }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="py-6 text-slate-400">No paid students found yet.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="rounded-3xl border border-slate-200/10 bg-slate-950/70 p-6">
+            <h2 class="text-xl font-semibold text-white">Sheet notes</h2>
+            <div class="mt-4 space-y-3 text-sm text-slate-300">
+                <p>This sheet lists students whose fee balance is fully cleared.</p>
+                <p>Use the export button to download the same list as CSV for printing or sharing.</p>
+                <p>If a student finishes paying later, the sheet updates automatically when reports reload.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- BALANCE SHEET + EXPORTS -->
     <div class="grid gap-6 lg:grid-cols-2">
 
@@ -132,6 +207,11 @@
                 <a href="{{ route('accounting.reports.export', ['type'=>'cash-flow']) }}"
                     class="rounded-xl border border-slate-700 px-4 py-3 text-white hover:bg-slate-800">
                     Cash Flow CSV
+                </a>
+
+                <a href="{{ route('accounting.reports.export', ['type'=>'paid-students']) }}"
+                    class="rounded-xl border border-slate-700 px-4 py-3 text-white hover:bg-slate-800">
+                    Paid Students CSV
                 </a>
 
                 @if(isset($ledgerAccount))

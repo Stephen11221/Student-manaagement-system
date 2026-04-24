@@ -53,6 +53,20 @@
             .balance { font-weight:700; }
             .positive { color:#6ee7b7; }
             .negative { color:#fca5a5; }
+            .live-panel { margin: 24px 0 12px; padding: 22px; border-radius: 18px; border: 1px solid rgba(148,163,184,.18); background: rgba(15,23,42,.78); backdrop-filter: blur(18px); }
+            .live-panel__head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; flex-wrap:wrap; margin-bottom:18px; }
+            .live-panel__title { color:var(--heading); font-size:1.3rem; margin-bottom:6px; }
+            .live-panel__copy { color:var(--muted); line-height:1.5; max-width:720px; }
+            .live-panel__meta { display:flex; gap:10px; flex-wrap:wrap; }
+            .live-pill { display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; border:1px solid rgba(245,158,11,.24); background:rgba(245,158,11,.1); color:#fef3c7; font-weight:700; font-size:.85rem; }
+            .live-list { display:grid; gap:12px; }
+            .live-message { border-radius:16px; border:1px solid rgba(51,65,85,.95); background:rgba(2,6,23,.4); padding:14px 16px; }
+            .live-message__top { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; }
+            .live-message__title { color:#f8fafc; font-weight:800; margin-bottom:4px; }
+            .live-message__body { color:#cbd5e1; line-height:1.6; margin-top:8px; white-space:pre-wrap; }
+            .live-message__time { color:#94a3b8; font-size:.82rem; white-space:nowrap; }
+            .live-message__badge { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px; background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.24); color:#fde68a; font-size:.76rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+            .live-empty { color:#cbd5e1; text-align:center; padding:22px 16px; border-radius:16px; border:1px dashed rgba(148,163,184,.24); background:rgba(15,23,42,.45); }
             @media (max-width: 860px) {
                 .hero { grid-template-columns:1fr; }
                 header { flex-direction:column; align-items:flex-start; }
@@ -108,6 +122,22 @@
                             <p class="copy">Students with balances</p>
                         </div>
                     </div>
+                </div>
+            </section>
+
+            <section class="live-panel">
+                <div class="live-panel__head">
+                    <div>
+                        <div class="live-panel__title"><i class="fa-regular fa-comment-dots"></i> Live Messages</div>
+                        <div class="live-panel__copy">Messages you send and any incoming student replies appear here automatically without reloading the page.</div>
+                    </div>
+                    <div class="live-panel__meta">
+                        <span class="live-pill" id="accountantUnreadCount"><i class="fa-regular fa-bell"></i> 0 unread</span>
+                        <span class="live-pill" id="accountantMessageCount"><i class="fa-solid fa-comments"></i> 0 messages</span>
+                    </div>
+                </div>
+                <div class="live-list" id="accountantLiveMessages">
+                    <div class="live-empty">Loading messages...</div>
                 </div>
             </section>
 
@@ -237,7 +267,17 @@
                                         <td>KSh {{ number_format($payment->amount_paid, 2) }}</td>
                                         <td class="balance {{ $balance > 0 ? 'negative' : 'positive' }}">KSh {{ number_format($balance, 2) }}</td>
                                         <td><span class="pill {{ $statusClass }}">{{ ucfirst($payment->status) }}</span></td>
-                                        <td><a href="{{ route('accountant.payments.edit', $payment->id) }}" class="ghost-btn" style="padding:8px 10px;"><i class="fa-solid fa-pen-to-square"></i> Edit</a></td>
+                                        <td style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            <a href="{{ route('accountant.payments.edit', $payment->id) }}" class="ghost-btn" style="padding:8px 10px;"><i class="fa-solid fa-pen-to-square"></i> Edit</a>
+                                            <button
+                                                type="button"
+                                                class="ghost-btn"
+                                                style="padding:8px 10px;"
+                                                onclick="openMessageModal({{ $payment->id }}, @js($payment->student?->name ?? 'Unknown student'), @js(route('accountant.payments.message', $payment->id)))"
+                                            >
+                                                <i class="fa-solid fa-comment-dots"></i> Message
+                                            </button>
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -285,7 +325,17 @@
                                         <td><span class="pill {{ $studentStatus }}">{{ ucfirst($studentStatus) }}</span></td>
                                         <td>
                                             @if($student->feePayments->first())
-                                                <a href="{{ route('accountant.payments.edit', $student->feePayments->first()->id) }}" class="ghost-btn" style="padding:8px 10px;"><i class="fa-solid fa-pen-to-square"></i> Edit</a>
+                                                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                                    <a href="{{ route('accountant.payments.edit', $student->feePayments->first()->id) }}" class="ghost-btn" style="padding:8px 10px;"><i class="fa-solid fa-pen-to-square"></i> Edit</a>
+                                                    <button
+                                                        type="button"
+                                                        class="ghost-btn"
+                                                        style="padding:8px 10px;"
+                                                        onclick="openMessageModal({{ $student->feePayments->first()->id }}, @js($student->name), @js(route('accountant.payments.message', $student->feePayments->first()->id)))"
+                                                    >
+                                                        <i class="fa-solid fa-comment-dots"></i> Message
+                                                    </button>
+                                                </div>
                                             @else
                                                 <span style="color: var(--muted);">No payment</span>
                                             @endif
@@ -303,10 +353,328 @@
 
         @include('partials.chat-fab')
         @include('partials.idle-timeout-modal')
+
+        <div id="messageModal" class="message-modal" style="display:none;">
+            <div class="message-modal__backdrop" onclick="closeMessageModal()"></div>
+            <div class="message-modal__panel" role="dialog" aria-modal="true" aria-labelledby="messageModalTitle">
+                <div class="message-modal__header">
+                    <div>
+                        <div class="message-modal__eyebrow">Quick message</div>
+                        <h3 id="messageModalTitle">Send Student Message</h3>
+                    </div>
+                    <button type="button" class="message-modal__close" onclick="closeMessageModal()" aria-label="Close message modal">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <form id="messageModalForm" method="POST">
+                    @csrf
+                    <div id="messageModalFeedback" class="message-modal__feedback" style="display:none;"></div>
+                    <div class="message-modal__grid">
+                        <div class="message-modal__field">
+                            <label for="messageModalRecipient">Recipient</label>
+                            <input id="messageModalRecipient" type="text" disabled>
+                        </div>
+                        <div class="message-modal__field">
+                            <label for="messageModalSubject">Subject</label>
+                            <input id="messageModalSubject" type="text" name="subject" value="Fee update" required>
+                        </div>
+                    </div>
+                    <div class="message-modal__field">
+                        <label for="messageModalBody">Message</label>
+                        <textarea id="messageModalBody" name="message" rows="6" required placeholder="Write a short message to the student..."></textarea>
+                    </div>
+                    <div class="message-modal__actions">
+                        <button type="button" class="ghost-btn" style="padding:10px 14px;" onclick="closeMessageModal()">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn primary" style="padding:10px 16px;">
+                            <i class="fa-solid fa-paper-plane"></i> Send Message
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <script src="{{ asset('js/idle-timeout.js') }}"></script>
         <script>
             document.documentElement.dataset.idleTimeout = "{{ config('idle.idle_timeout', 15) }}";
             document.documentElement.dataset.warningTime = "{{ config('idle.warning_time', 1) }}";
+
+            const accountantLiveMessages = document.getElementById('accountantLiveMessages');
+            const accountantUnreadCount = document.getElementById('accountantUnreadCount');
+            const accountantMessageCount = document.getElementById('accountantMessageCount');
+
+            function escapeHtml(value) {
+                return String(value ?? '')
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;')
+                    .replaceAll('"', '&quot;')
+                    .replaceAll("'", '&#039;');
+            }
+
+            function renderAccountantLiveMessages(messages) {
+                if (!accountantLiveMessages) {
+                    return;
+                }
+
+                if (!messages.length) {
+                    accountantLiveMessages.innerHTML = '<div class="live-empty">No messages yet. New messages will appear here automatically.</div>';
+                    return;
+                }
+
+                accountantLiveMessages.innerHTML = messages.map((item) => `
+                    <article class="live-message">
+                        <div class="live-message__top">
+                            <div>
+                                <div class="live-message__badge">${item.read_at ? 'Read' : 'Unread'}</div>
+                                <div class="live-message__title">${escapeHtml(item.title)}</div>
+                            </div>
+                            <div class="live-message__time">${escapeHtml(item.time ?? '')}</div>
+                        </div>
+                        <div class="live-message__body">${escapeHtml(item.message)}</div>
+                    </article>
+                `).join('');
+            }
+
+            async function loadAccountantLiveMessages() {
+                try {
+                    const response = await fetch("{{ route('notifications.live') }}", {
+                        headers: { 'Accept': 'application/json' },
+                    });
+
+                    if (!response.ok) {
+                        return;
+                    }
+
+                    const payload = await response.json();
+                    const messages = (payload.notifications ?? []).filter((item) => item.type === 'message');
+
+                    if (accountantUnreadCount) {
+                        accountantUnreadCount.innerHTML = `<i class="fa-regular fa-bell"></i> ${payload.unreadCount ?? 0} unread`;
+                    }
+
+                    if (accountantMessageCount) {
+                        accountantMessageCount.innerHTML = `<i class="fa-solid fa-comments"></i> ${payload.messageCount ?? 0} messages`;
+                    }
+
+                    renderAccountantLiveMessages(messages);
+                } catch (error) {
+                    console.error('Failed to load accountant live messages', error);
+                }
+            }
+
+            loadAccountantLiveMessages();
+            window.setInterval(loadAccountantLiveMessages, 6000);
+
+            const messageModal = document.getElementById('messageModal');
+            const messageModalForm = document.getElementById('messageModalForm');
+            const messageModalRecipient = document.getElementById('messageModalRecipient');
+            const messageModalSubject = document.getElementById('messageModalSubject');
+            const messageModalBody = document.getElementById('messageModalBody');
+            const messageModalFeedback = document.getElementById('messageModalFeedback');
+
+            function showMessageModalFeedback(message, type = 'success') {
+                if (!messageModalFeedback) {
+                    return;
+                }
+
+                messageModalFeedback.className = `message-modal__feedback is-${type}`;
+                messageModalFeedback.textContent = message;
+                messageModalFeedback.style.display = 'block';
+            }
+
+            function openMessageModal(paymentId, studentName, actionUrl) {
+                messageModalForm.action = actionUrl;
+                messageModalRecipient.value = studentName || 'Unknown student';
+                messageModalSubject.value = `Fee update for ${studentName || 'student'}`;
+                messageModalBody.value = 'Please review your fee balance and contact the accountant if you need any clarification.';
+                messageModalFeedback.style.display = 'none';
+                messageModal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+                messageModalSubject.focus();
+            }
+
+            function closeMessageModal() {
+                messageModal.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && messageModal.style.display === 'block') {
+                    closeMessageModal();
+                }
+            });
+
+            messageModalForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+
+                const submitButton = messageModalForm.querySelector('button[type="submit"]');
+                const submitLabel = submitButton?.innerHTML ?? '';
+                const formData = new FormData(messageModalForm);
+                const csrfToken = messageModalForm.querySelector('input[name="_token"]')?.value ?? '';
+
+                try {
+                    if (submitButton) {
+                        submitButton.disabled = true;
+                        submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+                    }
+
+                    const response = await fetch(messageModalForm.action, {
+                        method: 'POST',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: formData,
+                    });
+
+                    const payload = await response.json().catch(() => ({}));
+
+                    if (!response.ok) {
+                        const firstError = payload?.errors ? Object.values(payload.errors).flat().filter(Boolean)[0] : null;
+                        showMessageModalFeedback(payload.message || firstError || 'Could not send the message right now.', 'error');
+                        return;
+                    }
+
+                    showMessageModalFeedback(payload.message || 'Message sent successfully.', 'success');
+                    setTimeout(() => closeMessageModal(), 700);
+                    messageModalForm.reset();
+                } catch (error) {
+                    showMessageModalFeedback('Could not send the message right now.', 'error');
+                    console.error('Failed to send fee message', error);
+                } finally {
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = submitLabel;
+                    }
+                }
+            });
         </script>
+
+        <style>
+            .message-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 80;
+                display: none;
+            }
+            .message-modal__backdrop {
+                position: absolute;
+                inset: 0;
+                background: rgba(2, 6, 23, 0.72);
+                backdrop-filter: blur(8px);
+            }
+            .message-modal__panel {
+                position: relative;
+                z-index: 1;
+                width: min(680px, calc(100vw - 32px));
+                margin: 8vh auto 0;
+                border-radius: 24px;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(17, 24, 39, 0.98));
+                box-shadow: 0 32px 90px rgba(2, 6, 23, 0.45);
+                padding: 24px;
+            }
+            .message-modal__header {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 16px;
+                margin-bottom: 20px;
+            }
+            .message-modal__eyebrow {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 12px;
+                border-radius: 999px;
+                background: rgba(56, 189, 248, 0.12);
+                border: 1px solid rgba(56, 189, 248, 0.2);
+                color: #bae6fd;
+                font-size: 12px;
+                font-weight: 800;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .message-modal h3 {
+                margin-top: 10px;
+                color: #f8fafc;
+                font-size: 1.4rem;
+            }
+            .message-modal__close {
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                background: rgba(148, 163, 184, 0.08);
+                color: #e2e8f0;
+                width: 42px;
+                height: 42px;
+                border-radius: 12px;
+                cursor: pointer;
+            }
+            .message-modal__grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 14px;
+            }
+            .message-modal__field {
+                display: grid;
+                gap: 8px;
+                margin-bottom: 14px;
+            }
+            .message-modal__field label {
+                color: #dbeafe;
+                font-weight: 700;
+                font-size: 0.92rem;
+            }
+            .message-modal__field input,
+            .message-modal__field textarea {
+                width: 100%;
+                padding: 12px 14px;
+                border-radius: 12px;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                background: rgba(2, 6, 23, 0.58);
+                color: #f8fafc;
+                font: inherit;
+            }
+            .message-modal__field input:disabled {
+                color: #cbd5e1;
+                opacity: 0.85;
+            }
+            .message-modal__feedback {
+                margin-bottom: 14px;
+                padding: 12px 14px;
+                border-radius: 14px;
+                font-size: 0.92rem;
+                font-weight: 600;
+                line-height: 1.5;
+            }
+            .message-modal__feedback.is-success {
+                border: 1px solid rgba(34, 197, 94, 0.28);
+                background: rgba(34, 197, 94, 0.12);
+                color: #bbf7d0;
+            }
+            .message-modal__feedback.is-error {
+                border: 1px solid rgba(239, 68, 68, 0.28);
+                background: rgba(239, 68, 68, 0.12);
+                color: #fecaca;
+            }
+            .message-modal__actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+            @media (max-width: 640px) {
+                .message-modal__panel {
+                    margin-top: 4vh;
+                    padding: 18px;
+                }
+                .message-modal__grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
     </body>
 </html>

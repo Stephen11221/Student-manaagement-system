@@ -14,7 +14,7 @@ class IdleTimeoutHandler {
         this.warningCountdownTimer = null;
         this.warningDeadline = null;
         this.activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
-        
+
         this.init();
     }
 
@@ -31,7 +31,7 @@ class IdleTimeoutHandler {
 
     startIdleTimer() {
         this.clearTimers();
-        
+
         const idleMs = this.idleTimeout * 60 * 1000;
         const warningMs = (this.idleTimeout - this.warningTime) * 60 * 1000;
         const warningDelayMs = Math.max(warningMs, 0);
@@ -49,9 +49,9 @@ class IdleTimeoutHandler {
 
     resetTimer() {
         if (this.warningShown) {
-            return; // Don't reset if warning is already shown
+            return;
         }
-        
+
         this.clearTimers();
         this.warningShown = false;
         this.startIdleTimer();
@@ -65,7 +65,7 @@ class IdleTimeoutHandler {
 
     showWarning() {
         this.warningShown = true;
-        
+
         const modal = document.getElementById('idleTimeoutModal');
         if (modal) {
             modal.classList.remove('hidden');
@@ -73,8 +73,7 @@ class IdleTimeoutHandler {
             this.updateCountdown();
             if (this.warningCountdownTimer) clearInterval(this.warningCountdownTimer);
             this.warningCountdownTimer = setInterval(() => this.updateCountdown(), 1000);
-            
-            // Add continue button handler
+
             const continueBtn = document.getElementById('continueSession');
             if (continueBtn) {
                 continueBtn.onclick = () => {
@@ -122,17 +121,14 @@ class IdleTimeoutHandler {
         }
 
         this.logoutInProgress = true;
-        // Submit the logout form
         const form = document.getElementById('logoutForm');
         if (form) {
             form.submit();
         } else {
-            // Fallback: Create and submit a form
             const fallbackForm = document.createElement('form');
             fallbackForm.method = 'POST';
             fallbackForm.action = '/logout';
-            
-            // Add CSRF token
+
             const token = document.querySelector('meta[name="csrf-token"]');
             if (token) {
                 const input = document.createElement('input');
@@ -141,17 +137,16 @@ class IdleTimeoutHandler {
                 input.value = token.getAttribute('content');
                 fallbackForm.appendChild(input);
             }
-            
+
             document.body.appendChild(fallbackForm);
             fallbackForm.submit();
         }
     }
 }
 
-// Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
-    const idleHandler = new IdleTimeoutHandler({
-        idleTimeout: parseInt(document.documentElement.dataset.idleTimeout || 15),
-        warningTime: parseInt(document.documentElement.dataset.warningTime || 1)
+    new IdleTimeoutHandler({
+        idleTimeout: parseInt(document.documentElement.dataset.idleTimeout || 15, 10),
+        warningTime: parseInt(document.documentElement.dataset.warningTime || 1, 10)
     });
 });
