@@ -11,7 +11,7 @@
                 color-scheme: dark;
                 --bg: #020617;
                 --text: #e2e8f0;
-                --muted: #94a3b8;
+                --muted: #cbd5e1;
                 --heading: #f8fafc;
             }
 
@@ -38,8 +38,8 @@
             .panel {
                 padding: 34px;
                 border-radius: 34px;
-                border: 1px solid rgba(148, 163, 184, 0.18);
-                background: linear-gradient(135deg, rgba(8, 47, 73, 0.92), rgba(15, 23, 42, 0.96), rgba(6, 78, 59, 0.92));
+                border: 1px solid rgba(51, 65, 85, 0.95);
+                background: linear-gradient(135deg, rgba(8, 47, 73, 0.96), rgba(15, 23, 42, 0.98), rgba(6, 78, 59, 0.96));
                 box-shadow: 0 24px 80px rgba(2, 6, 23, 0.35);
             }
 
@@ -105,8 +105,8 @@
 
             .secondary {
                 color: var(--heading);
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(148, 163, 184, 0.18);
+                background: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(51, 65, 85, 0.95);
             }
 
             .primary {
@@ -123,8 +123,8 @@
 
             .stat {
                 border-radius: 26px;
-                border: 1px solid rgba(148, 163, 184, 0.14);
-                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(51, 65, 85, 0.95);
+                background: rgba(15, 23, 42, 0.9);
                 padding: 22px;
             }
 
@@ -134,7 +134,7 @@
 
             .stat .label {
                 font-size: 0.92rem;
-                color: #bae6fd;
+                color: #7dd3fc;
             }
 
             .stat .value {
@@ -204,7 +204,7 @@
                         <p class="copy">Active classes currently visible in your portal.</p>
                     </article>
                     <article class="stat">
-                        <p class="label" style="color: #a7f3d0;">Attendance</p>
+                        <p class="label" style="color: #86efac;">Attendance</p>
                         <p class="value">96%</p>
                         <p class="copy">Average attendance snapshot for this term.</p>
                     </article>

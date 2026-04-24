@@ -151,15 +151,15 @@
             }
 
             .alert.success {
-                color: #d1fae5;
-                background: rgba(16, 185, 129, 0.12);
-                border-color: rgba(52, 211, 153, 0.28);
+                color: #ecfdf5;
+                background: rgba(16, 185, 129, 0.18);
+                border-color: rgba(34, 197, 94, 0.4);
             }
 
             .alert.error {
-                color: #ffe4e6;
-                background: rgba(244, 63, 94, 0.12);
-                border-color: rgba(251, 113, 133, 0.28);
+                color: #fff1f2;
+                background: rgba(244, 63, 94, 0.18);
+                border-color: rgba(244, 63, 94, 0.4);
             }
 
             form {

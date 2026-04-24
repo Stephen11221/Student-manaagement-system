@@ -131,6 +131,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Chat messages sent by this user.
+     */
+    public function chatMessages()
+    {
+        return $this->hasMany(ChatMessage::class, 'sender_id');
+    }
+
+    /**
      * Career coach assigned to this student.
      */
     public function careerCoach()
@@ -160,6 +168,22 @@ class User extends Authenticatable
     public function attendanceRecords()
     {
         return $this->hasMany(Attendance::class, 'student_id');
+    }
+
+    /**
+     * Meetings this user is hosting or scheduling as a staff member.
+     */
+    public function staffMeetings()
+    {
+        return $this->hasMany(StaffMeeting::class, 'staff_id');
+    }
+
+    /**
+     * Meetings created by this user.
+     */
+    public function createdMeetings()
+    {
+        return $this->hasMany(StaffMeeting::class, 'created_by');
     }
 
     /**

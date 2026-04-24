@@ -15,38 +15,40 @@
         header { justify-content:space-between; align-items:center; margin-bottom:40px; padding-bottom:20px; border-bottom:1px solid rgba(148,163,184,.1); gap:16px; flex-wrap:wrap; }
         h1 { color:#f8fafc; font-size:2rem; }
         .header-actions { gap:10px; flex-wrap:wrap; }
-        .btn,.back-btn,.filter-btn,.action-btn { border-radius:8px; cursor:pointer; text-decoration:none; transition:.2s; font-weight:600; }
+        .btn,.back-btn,.filter-btn,.action-btn { border-radius:12px; cursor:pointer; text-decoration:none; transition:.2s; font-weight:700; }
         .back-btn,.btn,.action-btn { display:inline-flex; align-items:center; gap:8px; }
-        .back-btn,.btn,.action-btn { padding:10px 16px; }
+        .back-btn,.btn,.action-btn { padding:11px 16px; }
         .back-btn,.action-btn { background:rgba(34,211,238,.1); color:#22d3ee; border:1px solid rgba(34,211,238,.3); }
         .btn { background:linear-gradient(135deg,#22d3ee,#06b6d4); color:#082f49; border:none; }
         .filter-bar { margin-bottom:24px; }
         .filter-bar form { gap:10px; flex-wrap:wrap; }
-        .filter-btn { padding:8px 16px; border:1px solid rgba(148,163,184,.2); background:rgba(15,23,42,.6); color:#94a3b8; font-size:.85rem; }
-        .filter-btn.active,.filter-btn:hover { background:rgba(34,211,238,.15); color:#22d3ee; border-color:rgba(34,211,238,.3); }
+        .filter-btn { padding:9px 16px; border:1px solid rgba(51,65,85,.95); background:rgba(15,23,42,.86); color:#cbd5e1; font-size:.85rem; }
+        .filter-btn.active,.filter-btn:hover { background:rgba(34,211,238,.18); color:#e0f7ff; border-color:rgba(34,211,238,.45); }
         .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:24px; }
-        .stat-card,.notification-item,.empty-state { background:rgba(15,23,42,.78); border:1px solid rgba(148,163,184,.18); border-radius:12px; backdrop-filter:blur(18px); }
+        .stat-card,.notification-item,.empty-state { background:rgba(15,23,42,.9); border:1px solid rgba(51,65,85,.95); border-radius:16px; backdrop-filter:blur(18px); }
         .stat-card { padding:12px; text-align:center; }
-        .stat-number { color:#22d3ee; font-size:1.5rem; font-weight:700; }
-        .stat-label,.notification-time,.empty-text { color:#94a3b8; }
+        .stat-number { color:#67e8f9; font-size:1.5rem; font-weight:800; }
+        .stat-label,.notification-time,.empty-text { color:#cbd5e1; }
         .notification-item { gap:16px; align-items:flex-start; padding:20px; margin-bottom:16px; }
-        .notification-item.unread { border-left:4px solid #22d3ee; background:rgba(34,211,238,.08); }
-        .notification-icon { font-size:1.2rem; flex-shrink:0; width:50px; height:50px; background:rgba(34,211,238,.1); border-radius:8px; display:flex; align-items:center; justify-content:center; color:#22d3ee; }
+        .notification-item.unread { border-left:4px solid #38bdf8; background:rgba(14,165,233,.12); }
+        .notification-icon { font-size:1.2rem; flex-shrink:0; width:54px; height:54px; background:rgba(14,165,233,.16); border-radius:14px; display:flex; align-items:center; justify-content:center; color:#7dd3fc; }
         .notification-content { flex:1; }
         .notification-title { color:#f8fafc; font-weight:600; margin-bottom:4px; }
         .notification-message { color:#cbd5e1; font-size:.95rem; margin-bottom:8px; line-height:1.5; }
         .notification-actions { display:flex; gap:8px; flex-shrink:0; flex-wrap:wrap; }
-        .action-btn.delete { background:rgba(239,68,68,.1); color:#ef4444; border-color:rgba(239,68,68,.3); }
+        .action-btn.delete { background:rgba(239,68,68,.14); color:#fecaca; border-color:rgba(239,68,68,.32); }
         .empty-state { text-align:center; padding:60px 20px; }
-        .empty-icon { font-size:3rem; color:#22d3ee; margin-bottom:16px; }
+        .empty-icon { font-size:3rem; color:#7dd3fc; margin-bottom:16px; }
         .badge { display:inline-block; padding:4px 10px; border-radius:4px; font-size:.75rem; font-weight:600; margin-left:8px; }
-        .badge-homework { background:rgba(59,130,246,.2); color:#3b82f6; }
-        .badge-attendance { background:rgba(34,211,238,.2); color:#22d3ee; }
-        .badge-announcement { background:rgba(249,115,22,.2); color:#f97316; }
-        .badge-grade { background:rgba(16,185,129,.2); color:#10b981; }
-        .badge-class { background:rgba(168,85,247,.2); color:#d8b4fe; }
-        .badge-submission { background:rgba(250,204,21,.18); color:#fde047; }
-        .badge-exam { background:rgba(59,130,246,.18); color:#93c5fd; }
+        .badge-homework { background:rgba(59,130,246,.22); color:#bfdbfe; }
+        .badge-attendance { background:rgba(34,211,238,.22); color:#cffafe; }
+        .badge-announcement { background:rgba(249,115,22,.22); color:#fed7aa; }
+        .badge-grade { background:rgba(16,185,129,.22); color:#bbf7d0; }
+        .badge-class { background:rgba(168,85,247,.22); color:#e9d5ff; }
+        .badge-submission { background:rgba(250,204,21,.22); color:#fef08a; }
+        .badge-exam { background:rgba(59,130,246,.2); color:#dbeafe; }
+        .badge-message { background:rgba(34,211,238,.2); color:#cffafe; }
+        .section-panel { margin-bottom: 24px; }
     </style>
 </head>
 <body>
@@ -62,13 +64,36 @@
             </div>
         </header>
 
+        <div class="section-panel">
+            <x-announcement-message
+                tone="info"
+                icon="bell"
+                label="Notification Center"
+                title="Read updates as they arrive"
+                body="Check new notifications first so you do not miss homework, attendance, exam, or school-wide announcements."
+                :details="[
+                    ['icon' => 'bullhorn', 'label' => 'Announcements', 'value' => 'School-wide notices and urgent updates'],
+                    ['icon' => 'file-pen', 'label' => 'Homework', 'value' => 'Assignments and submission reminders'],
+                    ['icon' => 'clipboard-check', 'label' => 'Attendance', 'value' => 'Daily check-in and class records'],
+                    ['icon' => 'calendar-check', 'label' => 'Meetings', 'value' => 'Team and individual meeting invites'],
+                    ['icon' => 'file-signature', 'label' => 'Exams', 'value' => 'Exam schedules and results'],
+                ]"
+                action="Open the newest notification and act on it before it drops off your list."
+                deadline="Tip: The unread count shows what still needs attention"
+                cta-label="Back to Dashboard"
+                cta-href="{{ route('dashboard') }}"
+            />
+        </div>
+
         <div class="stats">
             <div class="stat-card"><div class="stat-number">{{ $notifications->total() }}</div><div class="stat-label">Total</div></div>
             <div class="stat-card"><div class="stat-number">{{ $unreadCount }}</div><div class="stat-label">Unread</div></div>
             <div class="stat-card"><div class="stat-number">{{ $submissionCount }}</div><div class="stat-label">Submissions</div></div>
             <div class="stat-card"><div class="stat-number">{{ $homeworkCount }}</div><div class="stat-label">Homework</div></div>
             <div class="stat-card"><div class="stat-number">{{ $attendanceCount }}</div><div class="stat-label">Attendance</div></div>
+            <div class="stat-card"><div class="stat-number">{{ $meetingCount ?? 0 }}</div><div class="stat-label">Meetings</div></div>
             <div class="stat-card"><div class="stat-number">{{ $examCount ?? 0 }}</div><div class="stat-label">Exams</div></div>
+            <div class="stat-card"><div class="stat-number">{{ $messageCount ?? 0 }}</div><div class="stat-label">Messages</div></div>
         </div>
 
         <div class="filter-bar">
@@ -79,6 +104,8 @@
                 <button type="submit" name="filter" value="homework" class="filter-btn {{ request('filter') === 'homework' ? 'active' : '' }}"><i class="fa-solid fa-file-pen"></i> Homework</button>
                 <button type="submit" name="filter" value="attendance" class="filter-btn {{ request('filter') === 'attendance' ? 'active' : '' }}"><i class="fa-solid fa-clipboard-check"></i> Attendance</button>
                 <button type="submit" name="filter" value="exam" class="filter-btn {{ request('filter') === 'exam' ? 'active' : '' }}"><i class="fa-solid fa-file-signature"></i> Exams</button>
+                <button type="submit" name="filter" value="meeting" class="filter-btn {{ request('filter') === 'meeting' ? 'active' : '' }}"><i class="fa-solid fa-calendar-check"></i> Meetings</button>
+                <button type="submit" name="filter" value="message" class="filter-btn {{ request('filter') === 'message' ? 'active' : '' }}"><i class="fa-solid fa-comments"></i> Messages</button>
             </form>
         </div>
 
@@ -100,6 +127,10 @@
                             <i class="fa-solid fa-cloud-arrow-up"></i>
                         @elseif ($notification->type === 'exam')
                             <i class="fa-solid fa-file-signature"></i>
+                        @elseif ($notification->type === 'meeting')
+                            <i class="fa-solid fa-calendar-check"></i>
+                        @elseif ($notification->type === 'message')
+                            <i class="fa-solid fa-comments"></i>
                         @else
                             <i class="fa-solid fa-circle-info"></i>
                         @endif
@@ -121,6 +152,10 @@
                             <span class="badge badge-submission">Upload</span>
                         @elseif ($notification->type === 'exam')
                             <span class="badge badge-exam">Exam</span>
+                        @elseif ($notification->type === 'meeting')
+                            <span class="badge badge-message">Meeting</span>
+                        @elseif ($notification->type === 'message')
+                            <span class="badge badge-message">Message</span>
                         @endif
                         </div>
                         <div class="notification-message">{{ $notification->message }}</div>

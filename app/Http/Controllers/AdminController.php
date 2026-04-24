@@ -4,18 +4,23 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\Role;
+use App\Models\StaffMeeting;
 use App\Models\ClassRoom;
 use App\Models\Department;
 use App\Models\Setting;
 use App\Models\AuditLog;
 use App\Models\Permission;
 use App\Models\Homework;
+use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 class AdminController extends Controller
 {
+    protected array $staffRoles = ['trainer', 'accountant', 'career_coach'];
+
     // ============ USER MANAGEMENT ============
 
     public function getUsers()
@@ -149,6 +154,159 @@ class AdminController extends Controller
         $user->activate();
         AuditLog::log('activate', 'User', $user->id, null, "Account activated");
         return redirect()->back()->with('success', "User {$user->name} activated successfully!");
+    }
+
+    // ============ STAFF MANAGEMENT ============
+
+    protected function staffRoleLabel(string $role): string
+    {
+        return match ($role) {
+            'trainer' => 'Trainers',
+            'accountant' => 'Accountants',
+            'career_coach' => 'Career Coaches',
+            default => 'Staff',
+        };
+    }
+
+    protected function staffRoleIcon(string $role): string
+    {
+        return match ($role) {
+            'trainer' => 'fa-chalkboard-user',
+            'accountant' => 'fa-calculator',
+            'career_coach' => 'fa-briefcase',
+            default => 'fa-user-group',
+        };
+    }
+
+    protected function validStaffRole(string $role): bool
+    {
+        return in_array($role, $this->staffRoles, true);
+    }
+
+    public function manageStaff(string $role)
+    {
+        abort_unless(auth()->user()?->role === 'admin', 403);
+        abort_unless($this->validStaffRole($role), 404);
+
+        $staff = User::withTrashed()
+            ->where('role', $role)
+            ->orderBy('name')
+            ->paginate(12, ['*'], 'staff_page');
+
+        $meetings = StaffMeeting::with(['staff', 'creator'])
+            ->where('team_role', $role)
+            ->orderByDesc('scheduled_at')
+            ->paginate(10, ['*'], 'meetings_page');
+
+        $stats = [
+            'total_staff' => User::withTrashed()->where('role', $role)->count(),
+            'active_staff' => User::where('role', $role)->where('is_active', true)->count(),
+            'team_meetings' => StaffMeeting::where('team_role', $role)->where('audience_type', 'team')->count(),
+            'individual_meetings' => StaffMeeting::where('team_role', $role)->where('audience_type', 'individual')->count(),
+        ];
+
+        return view('admin.staff.index', [
+            'role' => $role,
+            'roleLabel' => $this->staffRoleLabel($role),
+            'roleIcon' => $this->staffRoleIcon($role),
+            'staff' => $staff,
+            'meetings' => $meetings,
+            'stats' => $stats,
+        ]);
+    }
+
+    public function createStaffMeeting(string $role)
+    {
+        abort_unless(auth()->user()?->role === 'admin', 403);
+        abort_unless($this->validStaffRole($role), 404);
+
+        $staff = User::withTrashed()
+            ->where('role', $role)
+            ->orderBy('name')
+            ->get();
+
+        return view('admin.staff.meetings.create', [
+            'role' => $role,
+            'roleLabel' => $this->staffRoleLabel($role),
+            'roleIcon' => $this->staffRoleIcon($role),
+            'staff' => $staff,
+        ]);
+    }
+
+    public function storeStaffMeeting(Request $request, string $role)
+    {
+        abort_unless(auth()->user()?->role === 'admin', 403);
+        abort_unless($this->validStaffRole($role), 404);
+
+        $validated = $request->validate([
+            'audience_type' => ['required', Rule::in(['team', 'individual'])],
+            'staff_id' => ['nullable', 'exists:users,id', 'required_if:audience_type,individual'],
+            'title' => ['required', 'string', 'max:255'],
+            'meeting_type' => ['required', Rule::in(['online', 'physical'])],
+            'scheduled_at' => ['required', 'date'],
+            'location' => ['nullable', 'string', 'max:255', 'required_if:meeting_type,physical'],
+            'meeting_link' => ['nullable', 'url', 'required_if:meeting_type,online'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        if ($validated['audience_type'] === 'individual') {
+            $staff = User::withTrashed()
+                ->where('role', $role)
+                ->findOrFail($validated['staff_id']);
+
+            $validated['staff_id'] = $staff->id;
+        } else {
+            $validated['staff_id'] = null;
+        }
+
+        $meeting = StaffMeeting::create([
+            'team_role' => $role,
+            'audience_type' => $validated['audience_type'],
+            'staff_id' => $validated['staff_id'],
+            'meeting_type' => $validated['meeting_type'],
+            'title' => $validated['title'],
+            'scheduled_at' => $validated['scheduled_at'],
+            'location' => $validated['meeting_type'] === 'physical' ? ($validated['location'] ?? null) : null,
+            'meeting_link' => $validated['meeting_type'] === 'online' ? ($validated['meeting_link'] ?? null) : null,
+            'notes' => $validated['notes'] ?? null,
+            'status' => 'scheduled',
+            'created_by' => auth()->id(),
+        ]);
+
+        $staffName = $meeting->staff?->name ?? 'the selected staff member';
+        $message = $validated['audience_type'] === 'team'
+            ? "A {$this->staffRoleLabel($role)} meeting has been scheduled."
+            : "A meeting has been scheduled with {$staffName}.";
+
+        $staffQuery = User::where('role', $role);
+
+        if ($validated['audience_type'] === 'individual') {
+            $staffQuery->whereKey($validated['staff_id']);
+        }
+
+        $meetingLabel = ucfirst($validated['meeting_type']) . ' ' . $validated['title'];
+
+        foreach ($staffQuery->get() as $staffMember) {
+            Notification::create([
+                'user_id' => $staffMember->id,
+                'title' => 'New Meeting Scheduled',
+                'message' => "{$meetingLabel} on " . \Illuminate\Support\Carbon::parse($validated['scheduled_at'])->format('M d, Y g:i A') . '.',
+                'type' => 'meeting',
+                'link' => route('notifications.index'),
+            ]);
+        }
+
+        AuditLog::log(
+            'create',
+            'StaffMeeting',
+            $meeting->id,
+            null,
+            "Scheduled {$validated['meeting_type']} meeting for {$role}: {$validated['title']}"
+        );
+
+        return redirect()
+            ->route('admin.staff.index', $role)
+            ->with('status', $message);
     }
 
     // ============ CLASS MANAGEMENT ============

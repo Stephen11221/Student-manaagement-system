@@ -17,12 +17,18 @@
     </div>
 
     @if ($errors->any())
-        <div class="mb-6 rounded-lg border border-red-400 bg-red-100 px-4 py-3 text-red-700">
-            <ul class="list-disc pl-5">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
+        <div class="mb-6 rounded-2xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-rose-100">
+            <div class="flex items-start gap-3">
+                <i class="fa-solid fa-triangle-exclamation mt-0.5 text-rose-300"></i>
+                <div>
+                    <div class="text-sm font-semibold text-white">Please fix the errors</div>
+                    <ul class="mt-1 list-disc pl-5 text-sm text-rose-100/90">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            </div>
         </div>
     @endif
 
@@ -91,8 +97,14 @@
                     <p class="text-xs text-gray-500 dark:text-gray-400">Every student in the selected class will receive the message.</p>
                 </div>
 
-                <div id="all-field" class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-500/10 dark:text-rose-200" style="display:none;">
-                    <strong>Notice:</strong> This message will be sent to all users in the system except admins.
+                <div id="all-field" class="hidden rounded-2xl border border-amber-400/25 bg-amber-400/10 p-4 text-sm text-amber-50">
+                    <div class="flex items-start gap-3">
+                        <i class="fa-solid fa-exclamation-triangle mt-0.5 text-amber-300"></i>
+                        <div>
+                            <div class="font-semibold text-white">Broadcast Notice</div>
+                            <div class="mt-1 text-amber-50/90">This message will be sent to all users in the system except admins.</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div>
@@ -135,33 +147,73 @@
         </div>
 
         <div class="space-y-6">
-            <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-md dark:border-gray-700 dark:bg-gray-800">
-                <h3 class="mb-4 text-lg font-bold text-gray-900 dark:text-white">Recipient Preview</h3>
-                <div class="space-y-3 text-sm text-gray-700 dark:text-gray-300">
-                    <div class="rounded-xl bg-gray-50 p-4 dark:bg-gray-900">
-                        <div class="mb-1 font-semibold text-gray-900 dark:text-white">Individual User</div>
-                        <div>Pick a single student, trainer, coach, or staff account.</div>
-                    </div>
-                    <div class="rounded-xl bg-gray-50 p-4 dark:bg-gray-900">
-                        <div class="mb-1 font-semibold text-gray-900 dark:text-white">Class</div>
-                        <div>Send one message to every student in the selected class.</div>
-                    </div>
-                    <div class="rounded-xl bg-gray-50 p-4 dark:bg-gray-900">
-                        <div class="mb-1 font-semibold text-gray-900 dark:text-white">All Users</div>
-                        <div>Broadcast an announcement to the whole platform except admins.</div>
-                    </div>
-                </div>
-            </div>
+            <x-announcement-message
+                tone="warning"
+                icon="bullhorn"
+                label="Student Announcement"
+                title="Important: Assignment Submission"
+                body="Please submit your assignment before the deadline. Check the instructions carefully and make sure your file is complete and readable. Late submissions may not be accepted."
+                :details="[
+                    ['icon' => 'calendar', 'label' => 'Date', 'value' => 'Friday, 25 April 2026'],
+                    ['icon' => 'clock', 'label' => 'Time', 'value' => '5:00 PM'],
+                    ['icon' => 'location-dot', 'label' => 'Platform', 'value' => 'School Portal > Student Dashboard > Homework'],
+                    ['icon' => 'check-circle', 'label' => 'Requirements', 'value' => 'PDF or DOCX file, clear file name, correct class and student name'],
+                ]"
+                action="Upload your assignment now and confirm that the file opens correctly before submitting."
+                deadline="Deadline: 25 April 2026, 5:00 PM sharp"
+            />
 
-            <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-md dark:border-gray-700 dark:bg-gray-800">
-                <h3 class="mb-4 text-lg font-bold text-gray-900 dark:text-white">Message Structure</h3>
-                <div class="space-y-3 text-sm text-gray-700 dark:text-gray-300">
-                    <p><span class="font-semibold text-rose-600 dark:text-rose-400">1. Choose recipient:</span> user, class, or all users.</p>
-                    <p><span class="font-semibold text-rose-600 dark:text-rose-400">2. Add subject:</span> this becomes the notification title.</p>
-                    <p><span class="font-semibold text-rose-600 dark:text-rose-400">3. Write message:</span> this becomes the notification body.</p>
-                    <p><span class="font-semibold text-rose-600 dark:text-rose-400">4. Send:</span> the system creates notifications for each recipient.</p>
-                </div>
-            </div>
+            <x-announcement-message
+                tone="info"
+                icon="chalkboard-user"
+                label="Trainer Notice"
+                title="Attendance Check Starts at 8:00 AM"
+                body="Trainers should open the attendance sheet before class begins. Mark students immediately so the class record stays accurate."
+                :details="[
+                    ['icon' => 'calendar', 'label' => 'Date', 'value' => 'Monday, 28 April 2026'],
+                    ['icon' => 'clock', 'label' => 'Time', 'value' => '8:00 AM'],
+                    ['icon' => 'location-dot', 'label' => 'Platform', 'value' => 'Trainer Dashboard > Attendance'],
+                    ['icon' => 'check-circle', 'label' => 'Requirements', 'value' => 'Internet access, class register, and student list'],
+                ]"
+                action="Open the attendance page before the lesson starts and submit the record immediately after class."
+                deadline="Deadline: Before class starts"
+                cta-label="Open Attendance"
+                cta-href="{{ route('trainer.classes.index') }}"
+            />
+
+            <x-announcement-message
+                tone="info"
+                icon="users"
+                label="Recipient Preview"
+                title="Who Will Receive This?"
+                body="Check the audience before you send. Each option reaches a different group, so choose carefully."
+                :details="[
+                    ['icon' => 'user', 'label' => 'Individual', 'value' => 'A single student, trainer, coach, or staff account'],
+                    ['icon' => 'users', 'label' => 'Class', 'value' => 'All students in the selected class'],
+                    ['icon' => 'globe', 'label' => 'All Users', 'value' => 'Broadcast to the whole platform except admins'],
+                    ['icon' => 'check-circle', 'label' => 'Check', 'value' => 'Make sure the audience matches the message'],
+                ]"
+                :show-action="false"
+                :show-deadline="false"
+                :show-cta="false"
+            />
+
+            <x-announcement-message
+                tone="success"
+                icon="list-check"
+                label="Message Structure"
+                title="Send in Four Steps"
+                body="Choose the recipient, add the subject, write the message, and send it."
+                :details="[
+                    ['icon' => 'circle-check', 'label' => 'Step 1', 'value' => 'Choose recipient'],
+                    ['icon' => 'circle-check', 'label' => 'Step 2', 'value' => 'Add subject'],
+                    ['icon' => 'circle-check', 'label' => 'Step 3', 'value' => 'Write the message'],
+                    ['icon' => 'circle-check', 'label' => 'Step 4', 'value' => 'Send and confirm'],
+                ]"
+                :show-action="false"
+                :show-deadline="false"
+                :show-cta="false"
+            />
         </div>
     </div>
 </div>

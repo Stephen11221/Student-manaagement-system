@@ -54,15 +54,22 @@
                 <div class="stat-card"><div class="stat-number">{{ $totalUsers }}</div><div class="stat-label">Total users</div></div>
                 <div class="stat-card"><div class="stat-number">{{ $students }}</div><div class="stat-label">Students</div></div>
                 <div class="stat-card"><div class="stat-number">{{ $trainers }}</div><div class="stat-label">Trainers</div></div>
+                <div class="stat-card"><div class="stat-number">{{ $accountants ?? 0 }}</div><div class="stat-label">Accountants</div></div>
+                <div class="stat-card"><div class="stat-number">{{ $careerCoaches ?? 0 }}</div><div class="stat-label">Career coaches</div></div>
+                <div class="stat-card"><div class="stat-number">{{ $staffMeetings ?? 0 }}</div><div class="stat-label">Meetings</div></div>
             </div>
 
             <div class="section-title"><i class="fa-solid fa-sliders"></i> Admin Control Center</div>
             <div class="quick-links">
                 <div class="quick-link"><i class="fa-solid fa-users fa-2x"></i><h3>Manage users</h3><p>Create, edit, suspend, activate, and assign users to departments or career coaches.</p><a href="{{ route('admin.users.index') }}"><i class="fa-solid fa-arrow-right"></i> Open users</a></div>
+                <div class="quick-link"><i class="fa-solid fa-chalkboard-user fa-2x"></i><h3>Trainers</h3><p>Manage trainer accounts and book team or one-to-one meetings with trainers.</p><a href="{{ route('admin.staff.index', 'trainer') }}"><i class="fa-solid fa-arrow-right"></i> Open trainers</a></div>
+                <div class="quick-link"><i class="fa-solid fa-calculator fa-2x"></i><h3>Accountants</h3><p>Manage accountant accounts and arrange online or physical meetings.</p><a href="{{ route('admin.staff.index', 'accountant') }}"><i class="fa-solid fa-arrow-right"></i> Open accountants</a></div>
+                <div class="quick-link"><i class="fa-solid fa-briefcase fa-2x"></i><h3>Career coaches</h3><p>Manage coaches and schedule coaching sessions with individuals or teams.</p><a href="{{ route('admin.staff.index', 'career_coach') }}"><i class="fa-solid fa-arrow-right"></i> Open coaches</a></div>
                 <div class="quick-link"><i class="fa-solid fa-user-plus fa-2x"></i><h3>Add new user</h3><p>Create accounts for students, trainers, admins, and career coaches.</p><a href="{{ route('admin.users.create') }}"><i class="fa-solid fa-plus"></i> Create account</a></div>
                 <div class="quick-link"><i class="fa-solid fa-school fa-2x"></i><h3>View classes</h3><p>Review all classes, trainers, student counts, and homework coverage.</p><a href="{{ route('admin.classes.index') }}"><i class="fa-solid fa-eye"></i> Open classes</a></div>
                 <div class="quick-link"><i class="fa-solid fa-book-open-reader fa-2x"></i><h3>Manage homework</h3><p>Create and update assignments centrally across the school portal.</p><a href="{{ route('admin.homework.index') }}"><i class="fa-solid fa-list-check"></i> Open homework</a></div>
                 <div class="quick-link"><i class="fa-solid fa-clipboard-check fa-2x"></i><h3>Attendance hub</h3><p>Monitor daily attendance, manage bulk entry, and export reports.</p><a href="{{ route('admin.attendance.index') }}"><i class="fa-solid fa-arrow-right"></i> Open attendance</a></div>
+                <div class="quick-link"><i class="fa-solid fa-calendar-days fa-2x"></i><h3>Meetings</h3><p>Create team-format meetings for trainers, accountants, and career coaches.</p><a href="{{ route('admin.staff.index', 'trainer') }}"><i class="fa-solid fa-arrow-right"></i> Open meeting hub</a></div>
                 <div class="quick-link"><i class="fa-solid fa-calculator fa-2x"></i><h3>Accounting hub</h3><p>Review ledgers, invoices, statements, and financial reports.</p><a href="{{ route('accounting.dashboard') }}"><i class="fa-solid fa-arrow-right"></i> Open accounting</a></div>
             </div>
 
@@ -72,6 +79,11 @@
                     <h3><i class="fa-solid fa-user-gear"></i> User management</h3>
                     <p>Control account access, roles, departments, and career coach assignments.</p>
                     <ul><li>Account lifecycle management</li><li>Role assignments</li><li>Department organization</li><li>Career coach matching</li></ul>
+                </div>
+                <div class="feature-box">
+                    <h3><i class="fa-solid fa-calendar-check"></i> Staff meetings</h3>
+                    <p>Schedule online or physical meetings with each staff team separately.</p>
+                    <ul><li>Trainer meetings</li><li>Accountant meetings</li><li>Career coach meetings</li><li>Team or individual format</li></ul>
                 </div>
                 <div class="feature-box">
                     <h3><i class="fa-solid fa-chalkboard-user"></i> Academic oversight</h3>
