@@ -9,6 +9,17 @@
         <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600,700" rel="stylesheet" />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         @vite(['resources/css/app.css', 'resources/js/app.js'])
+        <style>
+            select,
+            select option {
+                background-color: #0f172a !important;
+                color: #f8fafc !important;
+            }
+
+            select {
+                color-scheme: dark;
+            }
+        </style>
         @stack('styles')
     </head>
     <body class="dark" data-sidebar-collapsed="false" data-sidebar-open="false">
@@ -20,8 +31,10 @@
             </main>
         </div>
 
-        @include('partials.chat-fab')
-        @include('partials.chat-panel')
+        @unless($hideChat ?? false)
+            @include('partials.chat-fab')
+            @include('partials.chat-panel')
+        @endunless
         @include('partials.idle-timeout-modal')
 
         <script src="{{ asset('js/idle-timeout.js') }}"></script>

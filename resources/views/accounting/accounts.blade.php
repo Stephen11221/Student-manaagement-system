@@ -6,9 +6,10 @@
 
 @php
     $sidebarRole = auth()->user()->role ?? 'accountant';
+    $hideChat = true;
 @endphp
 
-<div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
 
     <!-- HEADER -->
     <div class="rounded-3xl border border-slate-200/10 bg-slate-950/70 p-6">

@@ -49,9 +49,12 @@
             <div class="header">
                 <div>
                     <h1><i class="fa-solid fa-pen-to-square"></i> Edit Fee Payment</h1>
-                    <p class="subtitle">Update cash, Pochi la Biashara, bank transfer, or any other fee record.</p>
+                    <p class="subtitle">Update cash, check, deposit, bursary, or any other fee record.</p>
                 </div>
                 <div class="actions" style="margin-top:0;">
+                    <button type="button" class="btn primary" onclick="openQuickMessageModal()">
+                        <i class="fa-solid fa-comment-dots"></i> Quick Message
+                    </button>
                     <a href="{{ route('accountant.dashboard') }}" class="btn secondary"><i class="fa-solid fa-arrow-left"></i> Back</a>
                 </div>
             </div>
@@ -121,6 +124,10 @@
                                 <select name="payment_method" required>
                                     @foreach ([
                                         'cash' => 'Cash',
+                                        'check' => 'Check',
+                                        'cheque' => 'Cheque (legacy)',
+                                        'deposit' => 'Deposit',
+                                        'bursary' => 'Bursary',
                                         'mpesa' => 'M-Pesa',
                                         'pochi_la_biashara' => 'Pochi la Biashara',
                                         'bank_transfer' => 'Bank Transfer',
@@ -130,7 +137,7 @@
                                         <option value="{{ $value }}" @selected(old('payment_method', $payment->payment_method) === $value)>{{ $label }}</option>
                                     @endforeach
                                 </select>
-                                <div class="help">Use this when correcting a cash payment or changing to Pochi la Biashara.</div>
+                                <div class="help">Use this when correcting cash, check, deposit, bursary, or mobile payment records.</div>
                             </div>
 
                             <div class="field">
@@ -185,6 +192,31 @@
                             </div>
                         </form>
                     </div>
+
+                    <div id="student-message" style="margin-top:28px; padding-top:24px; border-top:1px solid rgba(148,163,184,.12);">
+                        <h3 style="color:var(--heading); margin-bottom:12px;"><i class="fa-solid fa-comment-dots"></i> Send Student Message</h3>
+                        <p style="color:var(--muted); margin-bottom:16px;">Send a private note to this student about fees, reminders, or follow-up.</p>
+                        <form method="POST" action="{{ route('accountant.payments.message', $payment->id) }}">
+                            @csrf
+                            <div class="grid">
+                                <div class="field">
+                                    <label>Subject</label>
+                                    <input type="text" name="subject" value="{{ old('subject', 'Fee update for ' . ($payment->student?->name ?? 'student')) }}" required>
+                                </div>
+                                <div class="field">
+                                    <label>Recipient</label>
+                                    <input type="text" value="{{ $payment->student?->name ?? 'Unknown student' }}" disabled>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label>Message</label>
+                                <textarea name="message" placeholder="Write a short message to the student..." required>{{ old('message', $payment->status === 'unpaid' ? 'Please review your fee balance and settle the pending amount.' : 'Your fee record has been updated. Please check the details.') }}</textarea>
+                            </div>
+                            <div class="actions" style="margin-top:16px;">
+                                <button type="submit" class="btn primary"><i class="fa-solid fa-paper-plane"></i> Send Message</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
 
                 <div class="card summary">
@@ -213,8 +245,10 @@
 
                     <div class="summary-box">
                         <div class="label">Current Method</div>
-                        <div class="value">{{ ucfirst(str_replace('_', ' ', $payment->payment_method ?? 'other')) }}</div>
-                        <div class="help">Cash and Pochi la Biashara are supported here.</div>
+                        <div class="value">
+                            {{ $payment->payment_method === 'check' ? 'Check' : ucfirst(str_replace('_', ' ', $payment->payment_method ?? 'other')) }}
+                        </div>
+                        <div class="help">Cash, check, deposit, bursary, and mobile payment methods are supported here.</div>
                     </div>
 
                     <div class="summary-box">
@@ -233,10 +267,251 @@
         </div>
 
         @include('partials.idle-timeout-modal')
+        <div id="quickMessageModal" class="message-modal" style="display:none;">
+            <div class="message-modal__backdrop" onclick="closeQuickMessageModal()"></div>
+            <div class="message-modal__panel" role="dialog" aria-modal="true" aria-labelledby="quickMessageModalTitle">
+                <div class="message-modal__header">
+                    <div>
+                        <div class="message-modal__eyebrow">Quick message</div>
+                        <h3 id="quickMessageModalTitle">Send Student Message</h3>
+                    </div>
+                    <button type="button" class="message-modal__close" onclick="closeQuickMessageModal()" aria-label="Close message modal">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <form id="quickMessageModalForm" method="POST" action="{{ route('accountant.payments.message', $payment->id) }}">
+                    @csrf
+                    <div id="quickMessageFeedback" class="message-modal__feedback" style="display:none;"></div>
+                    <div class="message-modal__grid">
+                        <div class="message-modal__field">
+                            <label for="quickMessageRecipient">Recipient</label>
+                            <input id="quickMessageRecipient" type="text" value="{{ $payment->student?->name ?? 'Unknown student' }}" disabled>
+                        </div>
+                        <div class="message-modal__field">
+                            <label for="quickMessageSubject">Subject</label>
+                            <input id="quickMessageSubject" type="text" name="subject" value="{{ old('subject', 'Fee update for ' . ($payment->student?->name ?? 'student')) }}" required>
+                        </div>
+                    </div>
+                    <div class="message-modal__field">
+                        <label for="quickMessageBody">Message</label>
+                        <textarea id="quickMessageBody" name="message" rows="6" required placeholder="Write a short message to the student...">{{ old('message', $payment->status === 'unpaid' ? 'Please review your fee balance and settle the pending amount.' : 'Your fee record has been updated. Please check the details.') }}</textarea>
+                    </div>
+                    <div class="message-modal__actions">
+                        <button type="button" class="ghost-btn" style="padding:10px 14px;" onclick="closeQuickMessageModal()">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn primary" style="padding:10px 16px;">
+                            <i class="fa-solid fa-paper-plane"></i> Send Message
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
         <script src="{{ asset('js/idle-timeout.js') }}"></script>
         <script>
             document.documentElement.dataset.idleTimeout = "{{ config('idle.idle_timeout', 15) }}";
             document.documentElement.dataset.warningTime = "{{ config('idle.warning_time', 1) }}";
+
+            const quickMessageModal = document.getElementById('quickMessageModal');
+            const quickMessageForm = document.getElementById('quickMessageModalForm');
+            const quickMessageFeedback = document.getElementById('quickMessageFeedback');
+
+            function showQuickMessageFeedback(message, type = 'success') {
+                if (!quickMessageFeedback) {
+                    return;
+                }
+
+                quickMessageFeedback.className = `message-modal__feedback is-${type}`;
+                quickMessageFeedback.textContent = message;
+                quickMessageFeedback.style.display = 'block';
+            }
+
+            function openQuickMessageModal() {
+                quickMessageFeedback.style.display = 'none';
+                quickMessageModal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+                document.getElementById('quickMessageSubject')?.focus();
+            }
+
+            function closeQuickMessageModal() {
+                quickMessageModal.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && quickMessageModal.style.display === 'block') {
+                    closeQuickMessageModal();
+                }
+            });
+
+            quickMessageForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+
+                const submitButton = quickMessageForm.querySelector('button[type="submit"]');
+                const submitLabel = submitButton?.innerHTML ?? '';
+                const csrfToken = quickMessageForm.querySelector('input[name="_token"]')?.value ?? '';
+
+                try {
+                    if (submitButton) {
+                        submitButton.disabled = true;
+                        submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+                    }
+
+                    const response = await fetch(quickMessageForm.action, {
+                        method: 'POST',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: new FormData(quickMessageForm),
+                    });
+
+                    const payload = await response.json().catch(() => ({}));
+
+                    if (!response.ok) {
+                        const firstError = payload?.errors ? Object.values(payload.errors).flat().filter(Boolean)[0] : null;
+                        showQuickMessageFeedback(payload.message || firstError || 'Could not send the message right now.', 'error');
+                        return;
+                    }
+
+                    showQuickMessageFeedback(payload.message || 'Message sent successfully.', 'success');
+                    setTimeout(() => closeQuickMessageModal(), 700);
+                    quickMessageForm.reset();
+                } catch (error) {
+                    showQuickMessageFeedback('Could not send the message right now.', 'error');
+                    console.error('Failed to send quick fee message', error);
+                } finally {
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = submitLabel;
+                    }
+                }
+            });
         </script>
+
+        <style>
+            .message-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 80;
+                display: none;
+            }
+            .message-modal__backdrop {
+                position: absolute;
+                inset: 0;
+                background: rgba(2, 6, 23, 0.72);
+                backdrop-filter: blur(8px);
+            }
+            .message-modal__panel {
+                position: relative;
+                z-index: 1;
+                width: min(680px, calc(100vw - 32px));
+                margin: 8vh auto 0;
+                border-radius: 24px;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(17, 24, 39, 0.98));
+                box-shadow: 0 32px 90px rgba(2, 6, 23, 0.45);
+                padding: 24px;
+            }
+            .message-modal__header {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 16px;
+                margin-bottom: 20px;
+            }
+            .message-modal__eyebrow {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 12px;
+                border-radius: 999px;
+                background: rgba(56, 189, 248, 0.12);
+                border: 1px solid rgba(56, 189, 248, 0.2);
+                color: #bae6fd;
+                font-size: 12px;
+                font-weight: 800;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .message-modal h3 {
+                margin-top: 10px;
+                color: #f8fafc;
+                font-size: 1.4rem;
+            }
+            .message-modal__close {
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                background: rgba(148, 163, 184, 0.08);
+                color: #e2e8f0;
+                width: 42px;
+                height: 42px;
+                border-radius: 12px;
+                cursor: pointer;
+            }
+            .message-modal__grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 14px;
+            }
+            .message-modal__field {
+                display: grid;
+                gap: 8px;
+                margin-bottom: 14px;
+            }
+            .message-modal__field label {
+                color: #dbeafe;
+                font-weight: 700;
+                font-size: 0.92rem;
+            }
+            .message-modal__field input,
+            .message-modal__field textarea {
+                width: 100%;
+                padding: 12px 14px;
+                border-radius: 12px;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                background: rgba(2, 6, 23, 0.58);
+                color: #f8fafc;
+                font: inherit;
+            }
+            .message-modal__field input:disabled {
+                color: #cbd5e1;
+                opacity: 0.85;
+            }
+            .message-modal__feedback {
+                margin-bottom: 14px;
+                padding: 12px 14px;
+                border-radius: 14px;
+                font-size: 0.92rem;
+                font-weight: 600;
+                line-height: 1.5;
+            }
+            .message-modal__feedback.is-success {
+                border: 1px solid rgba(34, 197, 94, 0.28);
+                background: rgba(34, 197, 94, 0.12);
+                color: #bbf7d0;
+            }
+            .message-modal__feedback.is-error {
+                border: 1px solid rgba(239, 68, 68, 0.28);
+                background: rgba(239, 68, 68, 0.12);
+                color: #fecaca;
+            }
+            .message-modal__actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+            @media (max-width: 640px) {
+                .message-modal__panel {
+                    margin-top: 4vh;
+                    padding: 18px;
+                }
+                .message-modal__grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
     </body>
 </html>

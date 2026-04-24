@@ -863,8 +863,11 @@ Route::middleware('auth')->group(function () {
                     ->where('status', 'active')
                     ->orderBy('name')
                     ->get();
+            $homeworkDoneCount = $user->homeworkSubmissions()
+                ->whereIn('status', ['submitted', 'graded'])
+                ->count();
 
-            return view('dashboard.student', compact('classes', 'availableClasses'));
+            return view('dashboard.student', compact('classes', 'availableClasses', 'homeworkDoneCount'));
         }
 
         if ($user->role === 'accountant') {
@@ -975,6 +978,33 @@ Route::middleware('auth')->group(function () {
             'messageCount' => (clone $allNotifications)->where('type', 'message')->count(),
         ]);
     })->name('notifications.index');
+
+    Route::get('/notifications/live', function () {
+        $notifications = Auth::user()->notifications()
+            ->latest()
+            ->limit(5)
+            ->get()
+            ->map(function (Notification $notification) {
+                return [
+                    'id' => $notification->id,
+                    'title' => $notification->title,
+                    'message' => $notification->message,
+                    'type' => $notification->type,
+                    'read_at' => $notification->read_at?->toIso8601String(),
+                    'created_at' => $notification->created_at?->toIso8601String(),
+                    'time' => $notification->created_at?->diffForHumans(),
+                    'link' => $notification->link,
+                ];
+            });
+
+        $allNotifications = Auth::user()->notifications();
+
+        return response()->json([
+            'unreadCount' => (clone $allNotifications)->whereNull('read_at')->count(),
+            'messageCount' => (clone $allNotifications)->where('type', 'message')->count(),
+            'notifications' => $notifications,
+        ]);
+    })->name('notifications.live');
 
     Route::post('/notifications/mark-all-as-read', function () {
         Auth::user()->notifications()
@@ -1929,7 +1959,7 @@ Route::middleware('auth')->group(function () {
                 'term' => ['nullable', 'string', 'max:255'],
                 'amount_due' => ['required', 'numeric', 'min:0'],
                 'amount_paid' => ['required', 'numeric', 'min:0'],
-                'payment_method' => ['required', 'in:cash,mpesa,pochi_la_biashara,bank_transfer,card,other'],
+                'payment_method' => ['required', 'in:cash,check,cheque,deposit,bursary,mpesa,pochi_la_biashara,bank_transfer,card,other'],
                 'phone_number' => ['nullable', 'string', 'max:255'],
                 'receipt_number' => ['nullable', 'string', 'max:255', 'unique:fee_payments,receipt_number,' . $payment->id],
                 'paid_at' => ['nullable', 'date'],
@@ -1938,13 +1968,16 @@ Route::middleware('auth')->group(function () {
             ]);
 
             $student = User::where('role', 'student')->findOrFail($validated['student_id']);
+            $paymentMethod = $validated['payment_method'] === 'cheque' ? 'check' : $validated['payment_method'];
 
             $payment->update([
                 ...$validated,
+                'payment_method' => $paymentMethod,
                 'student_id' => $student->id,
                 'paid_at' => $validated['paid_at'] ?? ($validated['status'] === 'unpaid' ? null : ($payment->paid_at ?? now())),
             ]);
 
+            $validated['payment_method'] = $paymentMethod;
             AuditLog::log('update', 'FeePayment', $payment->id, $validated, "Updated fee payment for {$student->name}");
 
             return redirect()->route('accountant.dashboard')->with('status', 'Fee payment updated successfully.');
@@ -1980,6 +2013,49 @@ Route::middleware('auth')->group(function () {
 
             return back()->with('status', 'Daraja STK push sent successfully.');
         })->name('accountant.payments.daraja.push');
+
+        Route::post('/payments/{payment}/message', function (FeePayment $payment, Request $request) {
+            $validated = $request->validate([
+                'subject' => ['required', 'string', 'max:255'],
+                'message' => ['required', 'string', 'max:2000'],
+            ]);
+
+            $student = User::where('role', 'student')->findOrFail($payment->student_id);
+
+            $student->notifications()->create([
+                'title' => $validated['subject'],
+                'message' => $validated['message'],
+                'type' => 'message',
+                'read' => false,
+                'link' => route('accountant.payments.edit', $payment->id),
+            ]);
+
+            Auth::user()->notifications()->create([
+                'title' => 'Message sent to ' . $student->name,
+                'message' => $validated['message'],
+                'type' => 'message',
+                'read' => false,
+                'link' => route('accountant.payments.edit', $payment->id),
+            ]);
+
+            AuditLog::log(
+                'send_message',
+                'User',
+                $student->id,
+                $validated,
+                "Sent fee message to {$student->name} for payment #{$payment->id}"
+            );
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Message sent to the student successfully.',
+                    'student_id' => $student->id,
+                    'payment_id' => $payment->id,
+                ]);
+            }
+
+            return back()->with('status', 'Message sent to the student successfully.');
+        })->name('accountant.payments.message');
     });
 
     Route::middleware('role:admin,accountant,manager')->prefix('accounting')->group(function () {

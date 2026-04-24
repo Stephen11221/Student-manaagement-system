@@ -37,6 +37,20 @@
             .class-meta { display:flex; gap:16px; flex-wrap:wrap; margin-top:8px; }
             .class-meta span { color:var(--muted); font-size:.92rem; }
             .main-content { min-width:0; }
+            .live-panel { margin: 16px 0 40px; padding: 24px; border-radius: 18px; border: 1px solid rgba(148,163,184,.18); background: rgba(15,23,42,.78); backdrop-filter: blur(18px); }
+            .live-panel__head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; flex-wrap:wrap; margin-bottom:18px; }
+            .live-panel__title { color:var(--heading); font-size:1.3rem; margin-bottom:6px; }
+            .live-panel__copy { color:var(--muted); line-height:1.5; }
+            .live-panel__meta { display:flex; gap:10px; flex-wrap:wrap; }
+            .live-pill { display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; border:1px solid rgba(34,211,238,.24); background:rgba(34,211,238,.1); color:#cffafe; font-weight:700; font-size:.85rem; }
+            .live-list { display:grid; gap:12px; }
+            .live-message { border-radius:16px; border:1px solid rgba(51,65,85,.95); background:rgba(2,6,23,.4); padding:14px 16px; }
+            .live-message__top { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; }
+            .live-message__title { color:#f8fafc; font-weight:800; margin-bottom:4px; }
+            .live-message__body { color:#cbd5e1; line-height:1.6; margin-top:8px; white-space:pre-wrap; }
+            .live-message__time { color:#94a3b8; font-size:.82rem; white-space:nowrap; }
+            .live-message__badge { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px; background:rgba(34,211,238,.12); border:1px solid rgba(34,211,238,.24); color:#cffafe; font-size:.76rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+            .live-empty { color:#cbd5e1; text-align:center; padding:22px 16px; border-radius:16px; border:1px dashed rgba(148,163,184,.24); background:rgba(15,23,42,.45); }
         </style>
     </head>
     <body>
@@ -57,6 +71,22 @@
                             <i class="fa-solid fa-circle-check"></i> {{ session('status') }}
                         </div>
                     @endif
+
+                    <section class="live-panel">
+                        <div class="live-panel__head">
+                            <div>
+                                <div class="live-panel__title"><i class="fa-regular fa-comment-dots"></i> Live Messages</div>
+                                <div class="live-panel__copy">New fee reminders and school messages appear here automatically without reloading the page.</div>
+                            </div>
+                            <div class="live-panel__meta">
+                                <span class="live-pill" id="liveUnreadCount"><i class="fa-regular fa-bell"></i> 0 unread</span>
+                                <span class="live-pill" id="liveMessageCount"><i class="fa-solid fa-comments"></i> 0 messages</span>
+                            </div>
+                        </div>
+                        <div class="live-list" id="liveMessagesList">
+                            <div class="live-empty">Loading messages...</div>
+                        </div>
+                    </section>
 
                     <div class="grid">
                         @php $currentClass = $classes[0] ?? null; @endphp
@@ -80,10 +110,10 @@
                         </div>
                         <div class="card">
                             <div class="stat-box">
-                                <div class="stat-number">{{ count($classes) }}</div>
-                                <div>Classes Enrolled</div>
+                                <div class="stat-number">{{ $homeworkDoneCount ?? 0 }}</div>
+                                <div>Homework Done</div>
                             </div>
-                            <a href="{{ route('student.timetable.index') }}" class="card-link"><i class="fa-regular fa-calendar"></i> View Timetable</a>
+                            <a href="{{ route('student.homework.index') }}" class="card-link"><i class="fa-solid fa-file-pen"></i> View Homework</a>
                         </div>
                         <div class="card">
                             <h2><i class="fa-solid fa-book-open"></i> Homework</h2>
@@ -169,6 +199,73 @@
     <script>
         document.documentElement.dataset.idleTimeout = "{{ config('idle.idle_timeout', 15) }}";
         document.documentElement.dataset.warningTime = "{{ config('idle.warning_time', 1) }}";
+
+        const liveMessagesList = document.getElementById('liveMessagesList');
+        const liveUnreadCount = document.getElementById('liveUnreadCount');
+        const liveMessageCount = document.getElementById('liveMessageCount');
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
+        }
+
+        function renderLiveMessages(messages) {
+            if (!liveMessagesList) {
+                return;
+            }
+
+            if (!messages.length) {
+                liveMessagesList.innerHTML = '<div class="live-empty">No messages yet. New messages will appear here automatically.</div>';
+                return;
+            }
+
+            liveMessagesList.innerHTML = messages.map((item) => `
+                <article class="live-message">
+                    <div class="live-message__top">
+                        <div>
+                            <div class="live-message__badge">${item.read_at ? 'Read' : 'Unread'}</div>
+                            <div class="live-message__title">${escapeHtml(item.title)}</div>
+                        </div>
+                        <div class="live-message__time">${escapeHtml(item.time ?? '')}</div>
+                    </div>
+                    <div class="live-message__body">${escapeHtml(item.message)}</div>
+                </article>
+            `).join('');
+        }
+
+        async function loadLiveMessages() {
+            try {
+                const response = await fetch("{{ route('notifications.live') }}", {
+                    headers: { 'Accept': 'application/json' },
+                });
+
+                if (!response.ok) {
+                    return;
+                }
+
+                const payload = await response.json();
+                const messages = (payload.notifications ?? []).filter((item) => item.type === 'message');
+
+                if (liveUnreadCount) {
+                    liveUnreadCount.innerHTML = `<i class="fa-regular fa-bell"></i> ${payload.unreadCount ?? 0} unread`;
+                }
+
+                if (liveMessageCount) {
+                    liveMessageCount.innerHTML = `<i class="fa-solid fa-comments"></i> ${payload.messageCount ?? 0} messages`;
+                }
+
+                renderLiveMessages(messages);
+            } catch (error) {
+                console.error('Failed to load live messages', error);
+            }
+        }
+
+        loadLiveMessages();
+        window.setInterval(loadLiveMessages, 6000);
     </script>
     </body>
 </html>

@@ -27,13 +27,25 @@
                     radial-gradient(circle at bottom right, rgba(239, 68, 68, 0.1), transparent 22%),
                     linear-gradient(135deg, #020617 0%, #0f172a 54%, #111827 100%);
             }
+
+            select,
+            select option {
+                background-color: #0f172a !important;
+                color: #f8fafc !important;
+            }
+
+            select {
+                color-scheme: dark;
+            }
         </style>
     </head>
     <body class="dark text-slate-100">
         @yield('content')
 
-        @include('partials.chat-fab')
-        @include('partials.chat-panel')
+        @unless($hideChat ?? false)
+            @include('partials.chat-fab')
+            @include('partials.chat-panel')
+        @endunless
         @include('partials.idle-timeout-modal')
 
         <script src="{{ asset('js/idle-timeout.js') }}"></script>
