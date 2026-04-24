@@ -22,6 +22,7 @@
                     ['label' => 'Transactions', 'icon' => 'document', 'route' => 'accounting.transactions.index', 'active' => 'accounting.transactions.*'],
                     ['label' => 'Invoices', 'icon' => 'receipt', 'route' => 'accounting.invoices.index', 'active' => 'accounting.invoices.*'],
                     ['label' => 'Reports', 'icon' => 'chart', 'route' => 'accounting.reports.index', 'active' => 'accounting.reports.*'],
+                    ['label' => 'Meetings', 'icon' => 'calendar-check', 'route' => 'meetings.index', 'active' => 'meetings.*'],
                 ],
             ],
             [
@@ -43,6 +44,7 @@
                     ['label' => 'Homework', 'icon' => 'book', 'route' => $classId ? 'trainer.homework.index' : 'trainer.classes.index', 'routeParams' => $classId ? [$classId] : [], 'active' => $classId ? 'trainer.homework.*' : 'trainer.classes.*'],
                     ['label' => 'Exams', 'icon' => 'clipboard', 'route' => $classId ? 'trainer.exams.index' : 'trainer.classes.index', 'routeParams' => $classId ? [$classId] : [], 'active' => $classId ? 'trainer.exams.*' : 'trainer.classes.*'],
                     ['label' => 'Attendance', 'icon' => 'clipboard', 'route' => $classId ? 'trainer.attendance.index' : 'trainer.classes.index', 'routeParams' => $classId ? [$classId] : [], 'active' => $classId ? 'trainer.attendance.*' : 'trainer.classes.*'],
+                    ['label' => 'Meetings', 'icon' => 'calendar-check', 'route' => 'meetings.index', 'active' => 'meetings.*'],
                 ],
             ],
             [

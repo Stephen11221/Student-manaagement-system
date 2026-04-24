@@ -148,6 +148,13 @@
                                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                                         {{ $meeting->meeting_type === 'online' ? ($meeting->meeting_link ?? 'No link added') : ($meeting->location ?? 'No location added') }}
                                     </p>
+                                    @if ($meeting->meeting_type === 'online' && $meeting->meeting_link)
+                                        <div class="mt-3">
+                                            <a href="{{ $meeting->meeting_link }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-semibold text-cyan-950 hover:bg-cyan-400">
+                                                <i class="fa-solid fa-video"></i> Join Meeting
+                                            </a>
+                                        </div>
+                                    @endif
                                 </div>
                                 <span class="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-200">
                                     {{ ucfirst($meeting->status) }}
