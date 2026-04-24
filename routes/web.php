@@ -5,6 +5,7 @@ use App\Http\Controllers\AccountingController;
 use App\Http\Controllers\AttendanceController;
 use App\Models\Attendance;
 use App\Models\AuditLog;
+use App\Models\ChatMessage;
 use App\Models\ClassRoom;
 use App\Models\FeePayment;
 use App\Models\Exam;
@@ -13,6 +14,7 @@ use App\Models\ExamSubmission;
 use App\Models\Homework;
 use App\Models\HomeworkSubmission;
 use App\Models\Notification;
+use App\Models\StaffMeeting;
 use App\Models\Timetable;
 use App\Models\User;
 use App\Services\AccountingService;
@@ -887,8 +889,11 @@ Route::middleware('auth')->group(function () {
             $totalUsers = (clone $userQuery)->count();
             $students = (clone $userQuery)->where('role', 'student')->count();
             $trainers = (clone $userQuery)->where('role', 'trainer')->count();
+            $accountants = (clone $userQuery)->where('role', 'accountant')->count();
+            $careerCoaches = (clone $userQuery)->where('role', 'career_coach')->count();
+            $staffMeetings = StaffMeeting::count();
 
-            return view('dashboard.admin', compact('totalUsers', 'students', 'trainers'));
+            return view('dashboard.admin', compact('totalUsers', 'students', 'trainers', 'accountants', 'careerCoaches', 'staffMeetings'));
         }
 
         if ($user->role === 'career_coach') {
@@ -951,6 +956,10 @@ Route::middleware('auth')->group(function () {
             $query->where('type', 'submission');
         } elseif ($filter === 'exam') {
             $query->where('type', 'exam');
+        } elseif ($filter === 'meeting') {
+            $query->where('type', 'meeting');
+        } elseif ($filter === 'message') {
+            $query->where('type', 'message');
         }
 
         $allNotifications = Auth::user()->notifications();
@@ -962,6 +971,8 @@ Route::middleware('auth')->group(function () {
             'attendanceCount' => (clone $allNotifications)->where('type', 'attendance')->count(),
             'submissionCount' => (clone $allNotifications)->where('type', 'submission')->count(),
             'examCount' => (clone $allNotifications)->where('type', 'exam')->count(),
+            'meetingCount' => (clone $allNotifications)->where('type', 'meeting')->count(),
+            'messageCount' => (clone $allNotifications)->where('type', 'message')->count(),
         ]);
     })->name('notifications.index');
 
@@ -991,6 +1002,83 @@ Route::middleware('auth')->group(function () {
 
         return back()->with('status', 'Notification deleted.');
     })->name('notifications.delete');
+
+    Route::get('/chat/messages', function () {
+        $messages = ChatMessage::with('sender')
+            ->where('room', 'all-users')
+            ->latest()
+            ->limit(50)
+            ->get()
+            ->reverse()
+            ->values()
+            ->map(function (ChatMessage $message) {
+                return [
+                    'id' => $message->id,
+                    'message' => $message->message,
+                    'sender' => $message->sender?->name ?? 'Unknown user',
+                    'role' => ucfirst(str_replace('_', ' ', $message->sender?->role ?? 'user')),
+                    'is_self' => $message->sender_id === Auth::id(),
+                    'created_at' => $message->created_at?->toIso8601String(),
+                    'time' => $message->created_at?->diffForHumans(),
+                ];
+            });
+
+        return response()->json([
+            'messages' => $messages,
+        ]);
+    })->name('chat.messages.index');
+
+    Route::post('/chat/messages', function (Request $request) {
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $sender = Auth::user();
+        $message = ChatMessage::create([
+            'sender_id' => $sender->id,
+            'room' => 'all-users',
+            'message' => $validated['message'],
+        ])->load('sender');
+
+        $recipients = User::where('id', '!=', $sender->id)->get();
+
+        foreach ($recipients as $user) {
+            $user->notifications()->create([
+                'title' => 'All Users Chat',
+                'message' => $sender->name . ': ' . $message->message,
+                'type' => 'message',
+                'link' => route('notifications.index'),
+                'read' => false,
+            ]);
+        }
+
+        AuditLog::log(
+            'send_chat_message',
+            'ChatMessage',
+            $message->id,
+            null,
+            'Posted a message to the all-users chat room.'
+        );
+
+        return response()->json([
+            'message' => [
+                'id' => $message->id,
+                'message' => $message->message,
+                'sender' => $message->sender?->name ?? 'Unknown user',
+                'role' => ucfirst(str_replace('_', ' ', $message->sender?->role ?? 'user')),
+                'is_self' => true,
+                'created_at' => $message->created_at?->toIso8601String(),
+                'time' => $message->created_at?->diffForHumans(),
+            ],
+            'notification' => [
+                'title' => 'All Users Chat',
+                'message' => $sender->name . ': ' . $message->message,
+                'type' => 'message',
+                'link' => route('notifications.index'),
+                'read' => false,
+            ],
+        ], 201);
+    })->name('chat.messages.store');
 
     Route::get('/homework-submissions/{submission}/file', function (HomeworkSubmission $submission) {
         $user = Auth::user();
@@ -1881,6 +1969,10 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::middleware('role:admin,department_admin')->prefix('admin')->group(function () {
+        Route::get('/staff/{role}', [AdminController::class, 'manageStaff'])->name('admin.staff.index');
+        Route::get('/staff/{role}/meetings/create', [AdminController::class, 'createStaffMeeting'])->name('admin.staff.meetings.create');
+        Route::post('/staff/{role}/meetings', [AdminController::class, 'storeStaffMeeting'])->name('admin.staff.meetings.store');
+
         Route::get('/users', function () {
             $viewer = Auth::user();
             $userQuery = User::withTrashed();

@@ -15,7 +15,7 @@
             @csrf
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <label class="grid gap-2 text-sm text-slate-300">Direction
-                    <select name="direction" class="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white">
+                    <select name="direction" class="rounded-xl border border-slate-700  px-4 py-3 text-white">
                         <option value="receivable">Receivable</option>
                         <option value="payable">Payable</option>
                     </select>

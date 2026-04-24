@@ -29,7 +29,7 @@
             }
         </style>
     </head>
-    <body class="text-slate-100">
+    <body class="dark text-slate-100">
         @yield('content')
 
         @include('partials.chat-fab')

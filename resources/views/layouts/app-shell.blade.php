@@ -11,7 +11,7 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         @stack('styles')
     </head>
-    <body data-sidebar-collapsed="false" data-sidebar-open="false">
+    <body class="dark" data-sidebar-collapsed="false" data-sidebar-open="false">
         <div class="app-shell">
             @include('partials.role-sidebar', ['role' => $sidebarRole ?? 'student', 'classId' => $sidebarClassId ?? null])
 
@@ -21,6 +21,7 @@
         </div>
 
         @include('partials.chat-fab')
+        @include('partials.chat-panel')
         @include('partials.idle-timeout-modal')
 
         <script src="{{ asset('js/idle-timeout.js') }}"></script>

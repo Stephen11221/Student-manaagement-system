@@ -74,7 +74,7 @@
                     ['label' => 'Profile', 'icon' => 'user', 'route' => 'profile.show', 'active' => 'profile.*'],
                 ],
             ],
-        ];
+        ]);
 
     $sidebarId = 'app-sidebar';
 @endphp
